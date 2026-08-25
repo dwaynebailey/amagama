@@ -23,21 +23,15 @@ import logging
 import os
 import time
 
+import click
 from flask import current_app
-from flask_script import Command, Option
+from flask.cli import with_appcontext
 from translate.storage import factory
 
 from amagama.commands import ensure_source_exists
 
-try:
-    unicode
-    # Python 2
-except NameError:
-    # Python 3
-    unicode = str
 
-
-class BenchmarkTMDB(Command):
+class BenchmarkTMDB(object):
     """Benchmark the application by querying for all strings in the given file.
 
     The source strings are queried against the database. The target strings
@@ -45,28 +39,14 @@ class BenchmarkTMDB(Command):
     as a default.
     """
 
-    option_list = (
-        Option('--source-language', '-s', dest='slang'),
-        Option('--target-language', '-t', dest='tlang'),
-        Option('--project-style', dest='project_style'),
-        Option('--min-similarity', '-m', dest='min_similarity', default=None,
-               help="The minimum similarity for related strings (default: "
-                    "server configuration)"),
-        Option('--max-candidates', '-n', dest='max_candidates', default=None,
-               help="The maximum number of strings to return (default: server "
-                    "configuration)"),
-        Option('--input', '-i', dest='filename',
-               help="A file or directory to use"),
-    )
-
     def run(self, slang, tlang, project_style, min_similarity, max_candidates,
             filename):
         ensure_source_exists()
         self.source_lang = slang
         self.target_lang = tlang
         self.project_style = project_style
-        self.min_similarity = min_similarity and int(min_similarity)
-        self.max_candidates = max_candidates and int(max_candidates)
+        self.min_similarity = min_similarity
+        self.max_candidates = max_candidates
 
         try:
             if not filename:
@@ -118,14 +98,13 @@ class BenchmarkTMDB(Command):
         try:
             for unit in store.units:
                 if unit.istranslatable():
-                    # TODO: rather time.monotonic in Python 3
-                    before = time.time()
-                    # We need an explicit unicode (not multistring), otherwise
+                    before = time.monotonic()
+                    # We need an explicit str (not multistring), otherwise
                     # psycopg2 can't adapt it:
-                    translate_unit(unicode(unit.source), source_lang,
+                    translate_unit(str(unit.source), source_lang,
                                    target_lang, project_style, min_similarity,
                                    max_candidates)
-                    duration = time.time() - before
+                    duration = time.monotonic() - before
                     if duration > .4 or \
                        duration > .04 + (len(unit.source)/1000):
                         print("Slow (%.3fs): %r" % (duration, unit.source))
@@ -147,3 +126,23 @@ class BenchmarkTMDB(Command):
         print("Percentiles:")
         for i in range(50, 101, 5):
             print("%d:\t%.4f" % (i, numpy.percentile(arr, i)))
+
+
+@click.command('benchmark_tmdb')
+@click.option('--source-language', '-s', 'slang', default=None)
+@click.option('--target-language', '-t', 'tlang', default=None)
+@click.option('--project-style', default=None)
+@click.option('--min-similarity', '-m', 'min_similarity', type=int, default=None,
+             help="The minimum similarity for related strings (default: "
+                  "server configuration)")
+@click.option('--max-candidates', '-n', 'max_candidates', type=int, default=None,
+             help="The maximum number of strings to return (default: server "
+                  "configuration)")
+@click.option('--input', '-i', 'filename', required=True,
+             help="A file or directory to use")
+@with_appcontext
+def benchmark_tmdb(slang, tlang, project_style, min_similarity, max_candidates,
+                   filename):
+    """Benchmark the application by querying for all strings in a file."""
+    BenchmarkTMDB().run(slang, tlang, project_style, min_similarity,
+                        max_candidates, filename)

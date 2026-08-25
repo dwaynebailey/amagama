@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-# Copyright 2008-2014 Zuza Software Foundation
+# Copyright 2009-2014 Zuza Software Foundation
 #
 # This file is part of amaGama.
 #
@@ -18,10 +18,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-"""Thin wrapper kept for git-checkout/PYTHONPATH use; `pip install`-ed
-setups should use the `amagama` console script instead."""
+"""amaGama's management CLI (the amagama-manage command)."""
 
-from amagama.devserver import main
+import click
+from flask.cli import FlaskGroup
 
-if __name__ == '__main__':
-    main()
+from amagama.application import amagama_server_factory
+from amagama.benchmark import benchmark_tmdb
+from amagama.commands import cli_commands
+
+
+@click.group(cls=FlaskGroup, create_app=amagama_server_factory)
+def manage():
+    """amaGama management commands."""
+
+
+for command in cli_commands:
+    manage.add_command(command)
+manage.add_command(benchmark_tmdb)
+
+
+if __name__ == "__main__":
+    manage()

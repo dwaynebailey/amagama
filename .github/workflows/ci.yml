@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
+
+    # Backs the amagama-manage smoke test below. The test suite itself
+    # doesn't use this: pytest-postgresql spins up its own throwaway
+    # PostgreSQL cluster using the pg_ctl installed in the next step.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: amagama
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      AMAGAMA_CONFIG: ${{ github.workspace }}/.github/ci-settings.py
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # docs/_themes is a git submodule (needed by the docs build below).
+          submodules: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install PostgreSQL server binaries (for pytest-postgresql)
+        run: sudo apt-get update && sudo apt-get install -y postgresql
+
+      - name: Install amaGama
+        run: pip install -e ".[dev]"
+
+      - name: Lint
+        run: ruff check .
+
+      - name: Compile check
+        run: python -m compileall -q -f .
+
+      - name: Run tests
+        run: |
+          PG_CTL=$(find /usr/lib/postgresql -name pg_ctl | sort -V | tail -1)
+          pytest --postgresql-exec="$PG_CTL"
+
+      - name: Build docs
+        run: make docs
+
+      - name: Smoke test amagama-manage against a real database
+        run: |
+          amagama-manage initdb -s en
+          amagama-manage tmdb_stats
+          yes | amagama-manage dropdb -s en

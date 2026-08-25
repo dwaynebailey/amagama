@@ -1,0 +1,11 @@
+# Run with pre-commit (https://pre-commit.com) or prek
+# (https://github.com/j178/prek), a drop-in, faster reimplementation that
+# uses this same config file.
+#
+# Install once per checkout with `prek install` (or `pre-commit install`).
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.4
+    hooks:
+      - id: ruff-check

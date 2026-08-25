@@ -35,6 +35,7 @@ recommended = [
 dev = [
     "amagama[recommended]",
     "numpy",
+    "prek",
     "ruff",
     "Sphinx>=1.1",
     "pytest",
@@ -53,3 +54,14 @@ amagama = ["templates/*", "static/**/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "amagama.__version__" }
+
+[tool.ruff]
+target-version = "py311"
+# The codebase predates any line-length convention; 110 covers its existing
+# long lines (mostly SQL literals) without forcing an unrelated reformat.
+line-length = 110
+
+[tool.ruff.lint]
+# pycodestyle + pyflakes: replaces the old pep8.sh/pep8 setup, and checks
+# more than its hand-picked subset of codes did.
+select = ["E", "F", "W"]

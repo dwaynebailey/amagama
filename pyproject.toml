@@ -17,6 +17,7 @@ urls = { Homepage = "http://amagama.translatehouse.org", Source = "https://githu
 dependencies = [
     "blinker>=1.6",
     "Flask>=3.0",
+    "Flask-Caching>=2.0",
     "psycopg2>=2.9",
     "translate-toolkit>=3.0",
 ]
@@ -29,7 +30,6 @@ recommended = [
     "python-Levenshtein>=0.10.2,!=0.11.0",
     # For management commands
     "click",
-    "Flask-Caching>=2.0",
     "lz4",
 ]
 dev = [

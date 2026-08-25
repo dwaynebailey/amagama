@@ -24,7 +24,6 @@ class TempTMDB(tmdb.TMDB):
         return self._connection
 
     def add_test_unit(self, source, target, slang=None, tlang=None):
-        lang_config = tmdb.lang_to_config('en')
         po = pofile()
         u = po.addsourceunit(source)
         u.target = target

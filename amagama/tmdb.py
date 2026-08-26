@@ -30,12 +30,11 @@ except ImportError:
     from gzip import compress
     COMPRESSED_LIMIT = 2000
 
-from collections import defaultdict
 import logging
 import math
 
 from flask import abort, current_app
-from psycopg2 import sql
+from psycopg import IntegrityError, ProgrammingError, sql
 from translate.lang import data
 from translate.search.lshtein import LevenshteinComparer
 
@@ -158,16 +157,19 @@ CREATE INDEX targets_lang_sid_idx ON targets (lang, sid) WITH (fillfactor = 100)
 --- The rest is handled in the code.
 """
 
-    PREPARE_LOOKUP = """
-PREPARE lookup AS
+    # A plain parameterized query, not a manually-PREPAREd one: psycopg3
+    # automatically prepares statements server-side after a few identical
+    # executions on the same connection (see Connection.prepare_threshold),
+    # so there's no need to do it by hand the way psycopg2 required.
+    LOOKUP_QUERY = """
 SELECT * from (
     SELECT s.text AS source, t.text AS target, TS_RANK(s.vector, query, 32) * 1744.93406073519 AS rank
     FROM sources s JOIN targets t ON s.sid = t.sid,
-    TO_TSQUERY($1, public.prepare_or_tsquery($2)) query
-    WHERE t.lang = $3 AND s.length BETWEEN $4 AND $5
+    TO_TSQUERY(%s, public.prepare_or_tsquery(%s)) query
+    WHERE t.lang = %s AND s.length BETWEEN %s AND %s
     AND s.vector @@ query
 ) sub
-WHERE rank > $6
+WHERE rank > %s
 ORDER BY rank DESC;
 """
     # TODO: stop returning "rank" once we're happy we have no users.
@@ -182,8 +184,6 @@ ORDER BY rank DESC;
         self.source_langs = set()
         for row in cursor:
             self.source_langs.add(row['schemaname'])
-        # set of languages with prepared statements per connection key:
-        self._prepared_statements = defaultdict(set)
 
     def init_app(self, app):
         super(TMDB, self).init_app(app)
@@ -230,7 +230,7 @@ ORDER BY rank DESC;
                 target_results = cursor.fetchall()
 
                 for result in target_results:
-                    tlang = result[0]
+                    tlang = result['lang']
                     target_languages.add(tlang)
 
             source_languages.sort()
@@ -303,7 +303,7 @@ ORDER BY rank DESC;
         query = """SELECT COUNT(*) FROM targets WHERE
         sid=%(sid)s AND lang=%(target_lang)s AND text=%(target)s"""
         cursor.execute(query, unit)
-        if not cursor.fetchone()[0]:
+        if not cursor.fetchone()['count']:
             query = """INSERT INTO targets (sid, text, lang) VALUES (
             %(sid)s, %(target)s, %(target_lang)s)"""
             cursor.execute(query, unit)
@@ -321,7 +321,7 @@ ORDER BY rank DESC;
         # TODO: update for memcached
         already_cached = set(split_cache_key(k) for k in already_cached)
 
-        uncached = tuple(all_sources - already_cached)
+        uncached = list(all_sources - already_cached)
         if not uncached:
             # Everything is already cached.
             return
@@ -334,8 +334,13 @@ ORDER BY rank DESC;
         # connection's default "public" schema active and breaking every
         # unqualified sources/targets query below.
         cursor = self.get_cursor(lang_to_table(source_lang))
+        # psycopg3 (unlike psycopg2) doesn't expand a tuple/list parameter
+        # into "IN (...)" - it binds it as a single value - so this uses
+        # ANY() with an array parameter instead. That needs an actual list:
+        # psycopg3 adapts Python lists to PostgreSQL arrays, but adapts
+        # tuples to composite-row literals instead, which ANY() can't use.
         select_query = """SELECT text, sid FROM sources WHERE
-        text IN %(list)s"""
+        text = ANY(%(list)s)"""
 
         to_store = set()
         already_stored = {}
@@ -346,7 +351,7 @@ ORDER BY rank DESC;
             # times before we give up:
             try:
                 cursor.execute(select_query, {"list": uncached})
-                already_stored = dict(cursor.fetchall())
+                already_stored = {row['text']: row['sid'] for row in cursor.fetchall()}
 
                 to_store = all_sources - already_cached - set(already_stored)
                 if not to_store:
@@ -378,7 +383,7 @@ ORDER BY rank DESC;
                 cursor.execute("SAVEPOINT before_sids")
                 cursor.executemany(insert_query, params)
                 cursor.execute("RELEASE SAVEPOINT before_sids")
-            except postgres.psycopg2.IntegrityError:
+            except IntegrityError:
                 cursor.execute("ROLLBACK TO SAVEPOINT before_sids")
             else:
                 # No exception means we can break the retry loop.
@@ -388,8 +393,8 @@ ORDER BY rank DESC;
 
         if to_store:
             # get the inserted rows back so that we have their IDs
-            cursor.execute(select_query, {"list": tuple(to_store)})
-            newly_stored = dict(cursor.fetchall())
+            cursor.execute(select_query, {"list": list(to_store)})
+            newly_stored = {row['text']: row['sid'] for row in cursor.fetchall()}
             already_stored.update(newly_stored)
 
         current_app.cache.set_many({
@@ -463,7 +468,7 @@ ORDER BY rank DESC;
                         })
                         self.add_dict(unit, cursor=cursor)
                         count += 1
-                except postgres.psycopg2.IntegrityError:
+                except IntegrityError:
                     # Similar to above, it seems some other process inserted
                     # the target before we could. Let's just ignore it, since
                     # we don't need any information about it.
@@ -489,13 +494,9 @@ ORDER BY rank DESC;
             self._comparer = LevenshteinComparer(max_length)
         return self._comparer
 
-    def _translate_query(self, cursor, slang, tlang, lang_config, query,
+    def _translate_query(self, cursor, lang_config, tlang, query,
                         min_len, max_len, min_rank):
-        if slang not in self._prepared_statements[id(cursor.connection)]:
-            if not self.prepared_statement_exists("lookup"):
-                cursor.execute(self.PREPARE_LOOKUP)
-            self._prepared_statements[id(cursor.connection)].add(slang)
-        cursor.execute("EXECUTE lookup (%s, %s, %s, %s, %s, %s)",
+        cursor.execute(self.LOOKUP_QUERY,
                        (lang_config, query, tlang, min_len, max_len, min_rank))
 
     def translate_unit(self, unit_source, source_lang, target_lang,
@@ -533,10 +534,10 @@ ORDER BY rank DESC;
 
         cursor = self.get_cursor(slang)
         try:
-            self._translate_query(cursor, slang, tlang, lang_config,
+            self._translate_query(cursor, lang_config, tlang,
                                   indexing_version(unit_source, checker),
                                   minlen, maxlen, minrank)
-        except postgres.psycopg2.ProgrammingError:
+        except ProgrammingError:
             # Avoid problems parsing strings like '<a "\b">'. If any of the
             # characters in the example string is not present, then no error is
             # thrown. The error is still present if any number of other letters

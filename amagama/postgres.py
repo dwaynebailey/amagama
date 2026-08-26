@@ -20,66 +20,57 @@
 
 """PostgreSQL access and helpers."""
 
-import psycopg2.extensions
-from psycopg2 import sql
+import threading
+
 from flask import g, got_request_exception
-from psycopg2.extras import DictCursor
-from psycopg2.pool import AbstractConnectionPool
+from psycopg import sql
+from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 
 
-# Setup unicode.
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODE)
-psycopg2.extensions.register_type(psycopg2.extensions.UNICODEARRAY)
-
-
-# Imported verbatim from psycopg2 2.7 where it was removed:
-class PersistentConnectionPool(AbstractConnectionPool):
+class PersistentConnectionPool:
     """A pool that assigns persistent connections to different threads.
-    Note that this connection pool generates by itself the required keys
-    using the current thread id.  This means that until a thread puts away
-    a connection it will always get the same connection object by successive
-    `!getconn()` calls. This also means that a thread can't use more than one
-    single connection from the pool.
+
+    Until a thread puts away its connection it will always get the same
+    connection object back from successive `!getconn()` calls, and a thread
+    can't use more than one connection from the pool at a time. amaGama
+    depends on this: within one request, multiple get_cursor() calls need
+    to share one open transaction (e.g. so an INSERT in one call is visible
+    to a SELECT in the next, before the request-end commit).
+
+    psycopg_pool.ConnectionPool doesn't provide this affinity itself -
+    plain getconn() calls just return any available connection - so this
+    wraps one to add it back, the same way the psycopg2-based
+    PersistentConnectionPool this replaces did (that one subclassed
+    psycopg2's own AbstractConnectionPool, keying its used-connections dict
+    by thread id; psycopg_pool has no equivalent base class to subclass, so
+    this uses a plain threading.local() instead).
     """
 
-    def __init__(self, minconn, maxconn, *args, **kwargs):
-        """Initialize the threading lock."""
-        import threading
-        AbstractConnectionPool.__init__(
-            self, minconn, maxconn, *args, **kwargs)
-        self._lock = threading.Lock()
-
-        # we we'll need the thread module, to determine thread ids, so we
-        # import it here and copy it in an instance variable
-        self.__threading = threading
+    def __init__(self, minconn, maxconn, **kwargs):
+        self._pool = ConnectionPool(
+            min_size=minconn, max_size=maxconn, kwargs=kwargs, open=True)
+        self._local = threading.local()
 
     def getconn(self):
-        """Generate thread id and return a connection."""
-        key = self.__threading.current_thread().ident
-        self._lock.acquire()
-        try:
-            return self._getconn(key)
-        finally:
-            self._lock.release()
+        """Return this thread's connection, checking one out if needed."""
+        conn = getattr(self._local, 'connection', None)
+        if conn is None:
+            conn = self._pool.getconn()
+            self._local.connection = conn
+        return conn
 
-    def putconn(self, conn=None, close=False):
-        """Put away an unused connection."""
-        key = self.__threading.current_thread().ident
-        self._lock.acquire()
-        try:
-            if not conn:
-                conn = self._used[key]
-            self._putconn(conn, key, close)
-        finally:
-            self._lock.release()
+    def putconn(self, conn=None):
+        """Put away this thread's connection."""
+        conn = conn or getattr(self._local, 'connection', None)
+        if conn is None:
+            return
+        self._local.connection = None
+        self._pool.putconn(conn)
 
     def closeall(self):
         """Close all connections (even the one currently in use.)"""
-        self._lock.acquire()
-        try:
-            self._closeall()
-        finally:
-            self._lock.release()
+        self._pool.close()
 
 
 class PostGres(object):
@@ -118,7 +109,7 @@ class PostGres(object):
         db_args = {
             'minconn': app.config.get('DB_MIN_CONNECTIONS', 2),
             'maxconn': app.config.get('DB_MAX_CONNECTIONS', 20),
-            'database': app.config.get('DB_NAME'),
+            'dbname': app.config.get('DB_NAME'),
             'user': app.config.get('DB_USER'),
             'password': app.config.get('DB_PASSWORD', ''),
         }
@@ -154,7 +145,7 @@ class PostGres(object):
         explicit schemas)."""
         #FIXME: maybe use server side cursors?
         conn = self.connection
-        cursor = conn.cursor(cursor_factory=DictCursor)
+        cursor = conn.cursor(row_factory=dict_row)
         if schema and self._last_schema.get(id(conn)) != schema:
             cursor.execute(sql.SQL("SET SCHEMA {}").format(sql.Literal(schema)))
             self._last_schema[id(conn)] = schema
@@ -173,21 +164,14 @@ class PostGres(object):
         query = """SELECT EXISTS(SELECT proname FROM pg_proc WHERE proname = %(function)s)"""
         cursor = self.get_cursor()
         cursor.execute(query, {'function': function})
-        return cursor.fetchone()[0]
+        return cursor.fetchone()['exists']
 
     def table_exists(self, table):
         """Check if table already exists in the database."""
         query = """SELECT EXISTS(SELECT relname FROM pg_class WHERE relname = %(table)s and relkind='r')"""
         cursor = self.get_cursor()
         cursor.execute(query, {'table': table})
-        return cursor.fetchone()[0]
-
-    def prepared_statement_exists(self, statement):
-        """Check if statement already exists in the database."""
-        query = """SELECT EXISTS(SELECT name FROM pg_prepared_statements WHERE name = %(stmt)s)"""
-        cursor = self.get_cursor()
-        cursor.execute(query, {'stmt': statement})
-        return cursor.fetchone()[0]
+        return cursor.fetchone()['exists']
 
     def drop_table(self, table):
         """Drop the table if it exists."""

@@ -45,7 +45,7 @@ class TestTMDB(object):
             assert result0["source"] == "Network"
             assert result0["quality"] < 100
 
-            # Was giving traceback psycopg2.ProgrammingError:
+            # Was giving traceback psycopg.ProgrammingError:
             amagama.tmdb.translate_unit('<a "\\b">', "en", "af")
 
     def test_source_lang_with_region_code(self, amagama):

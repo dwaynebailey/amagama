@@ -25,7 +25,7 @@ import sys
 import click
 from flask import current_app
 from flask.cli import with_appcontext
-from psycopg2 import sql
+from psycopg import sql
 
 from translate.lang.data import langcode_ire
 from translate.lang.identify import LanguageIdentifier
@@ -91,28 +91,33 @@ def deploy_db():
         for upper_bound in upper_bounds:
             idx_name = "sources_up_to_%d_text_idx" % upper_bound
             if lower_bound == 0:
+                # A CREATE INDEX predicate can't take a bind parameter (only
+                # a literal constant), so the bound is composed straight
+                # into the SQL text with sql.Literal() rather than passed
+                # as an execute() parameter.
                 cursor.execute(sql.SQL("""
                     CREATE INDEX {} ON sources USING gin(vector)
-                    WHERE length <= %s""").format(
+                    WHERE length <= {}""").format(
                         sql.Identifier(idx_name),
-                    ),
-                   (max_leven(upper_bound, SIMILARITY, MAX_LENGTH),))
+                        sql.Literal(max_leven(upper_bound, SIMILARITY, MAX_LENGTH)),
+                    ))
             else:
                 bounds = (min_leven(lower_bound, SIMILARITY),
                           max_leven(upper_bound, SIMILARITY, MAX_LENGTH))
                 cursor.execute(sql.SQL("""
                     CREATE INDEX {} ON sources USING gin(vector)
-                    WHERE length BETWEEN %s AND %s""").format(
-                        sql.Identifier(idx_name)
-                    ),
-                    bounds
-                )
+                    WHERE length BETWEEN {} AND {}""").format(
+                        sql.Identifier(idx_name),
+                        sql.Literal(bounds[0]),
+                        sql.Literal(bounds[1]),
+                    ))
             lower_bound = upper_bound + 1
 
-        cursor.execute("""
+        cursor.execute(sql.SQL("""
             CREATE INDEX sources_long_idx ON sources USING gin(vector)
-            WHERE length >= %s""",
-                       (min_leven(lower_bound, SIMILARITY),))
+            WHERE length >= {}""").format(
+                sql.Literal(min_leven(lower_bound, SIMILARITY)),
+            ))
         cursor.connection.commit()
         print("Finished optimising for language %s" % slang)
     print("Successfully altered the database for deployment.")
@@ -126,31 +131,28 @@ def tmdb_stats():
     db_name = current_app.config.get("DB_NAME")
 
     cursor = current_app.tmdb.get_cursor()
-    query = """SELECT pg_size_pretty(pg_database_size(%s))"""
+    query = """SELECT pg_size_pretty(pg_database_size(%s)) AS db_size"""
     cursor.execute(query, (db_name,))
     result = cursor.fetchone()
-    print("Complete database (%s):\t%s" % (db_name, result[0]))
+    print("Complete database (%s):\t%s" % (db_name, result['db_size']))
 
     for slang in current_app.tmdb.source_langs:
         print()
         print("Source language:", slang)
         cursor = current_app.tmdb.get_cursor(slang)
         query = """SELECT
-            pg_size_pretty(pg_total_relation_size('sources')),
-            pg_size_pretty(pg_total_relation_size('targets')),
-            pg_size_pretty(pg_relation_size('sources')),
-            pg_size_pretty(pg_relation_size('targets'))
+            pg_size_pretty(pg_total_relation_size('sources')) AS sources_total_size,
+            pg_size_pretty(pg_total_relation_size('targets')) AS targets_total_size,
+            pg_size_pretty(pg_relation_size('sources')) AS sources_table_size,
+            pg_size_pretty(pg_relation_size('targets')) AS targets_table_size
         ;"""
-        data = (
-            db_name,
-        )
-        cursor.execute(query, data)
+        cursor.execute(query)
 
         result = cursor.fetchone()
-        print("Complete size of sources:\t%s" % result[0])
-        print("Complete size of targets:\t%s" % result[1])
-        print("sources (table only):\t%s" % result[2])
-        print("targets (table only):\t%s" % result[3])
+        print("Complete size of sources:\t%s" % result['sources_total_size'])
+        print("Complete size of targets:\t%s" % result['targets_total_size'])
+        print("sources (table only):\t%s" % result['sources_table_size'])
+        print("targets (table only):\t%s" % result['targets_table_size'])
 
         query = sql.SQL("""COPY (
             SELECT relname,
@@ -162,7 +164,9 @@ def tmdb_stats():
         ) TO STDOUT
         ;""").format(sql.Literal(slang))
         logging.info("\nIndex sizes:")
-        cursor.copy_expert(query, sys.stdout)
+        with cursor.copy(query) as copy:
+            for data in copy:
+                sys.stdout.buffer.write(bytes(data))
 
 
 class BuildTMDB(object):

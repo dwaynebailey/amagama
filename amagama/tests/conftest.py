@@ -1,10 +1,8 @@
 """pytest fixtures"""
 
-import psycopg2
 import pytest
 
 from pytest_postgresql import factories
-from pytest_postgresql.janitor import DatabaseJanitor
 
 from translate.storage.po import pofile
 
@@ -33,34 +31,10 @@ class TempTMDB(tmdb.TMDB):
 
 
 pg_server = factories.postgresql_proc(port=None)
-
-
-@pytest.fixture
-def pg_connection(pg_server):
-    """A psycopg2 connection to a freshly created, empty test database.
-
-    amaGama's postgres.py is built on psycopg2, so unlike
-    pytest_postgresql's own `factories.postgresql()` client fixture (which
-    connects with psycopg3), this connects with psycopg2 to match.
-    """
-    janitor = DatabaseJanitor(
-        user=pg_server.user,
-        host=pg_server.host,
-        port=pg_server.port,
-        dbname="amagama_test",
-        version=pg_server.version,
-        password=pg_server.password,
-    )
-    with janitor:
-        connection = psycopg2.connect(
-            dbname="amagama_test",
-            user=pg_server.user,
-            password=pg_server.password,
-            host=pg_server.host,
-            port=pg_server.port,
-        )
-        yield connection
-        connection.close()
+# Now that amagama's postgres.py is built on psycopg3 too, this can use
+# pytest_postgresql's own psycopg3-based connection fixture directly,
+# instead of a custom one connecting with psycopg2 to match.
+pg_connection = factories.postgresql('pg_server', dbname='amagama_test')
 
 
 @pytest.fixture

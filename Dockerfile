@@ -1,10 +1,6 @@
 # syntax=docker/dockerfile:1
 FROM python:3.12-slim AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential libpq-dev \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /build
 COPY pyproject.toml README.rst ./
 COPY amagama amagama
@@ -13,10 +9,7 @@ RUN pip wheel --wheel-dir /wheels ".[recommended]" gunicorn
 
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        libpq5 \
-    && rm -rf /var/lib/apt/lists/* \
-    && useradd --create-home --uid 1000 amagama
+RUN useradd --create-home --uid 1000 amagama
 
 COPY --from=builder /wheels /wheels
 RUN pip install --no-cache-dir /wheels/*.whl && rm -rf /wheels

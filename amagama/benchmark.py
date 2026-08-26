@@ -100,7 +100,7 @@ class BenchmarkTMDB(object):
                 if unit.istranslatable():
                     before = time.monotonic()
                     # We need an explicit str (not multistring), otherwise
-                    # psycopg2 can't adapt it:
+                    # psycopg can't adapt it:
                     translate_unit(str(unit.source), source_lang,
                                    target_lang, project_style, min_similarity,
                                    max_candidates)

@@ -189,7 +189,7 @@ ORDER BY rank DESC;
         super(TMDB, self).init_app(app)
         self.max_import_len = app.config.get('MAX_LENGTH', 2000)
         if self.max_import_len > 4000:
-            logging.warn("Very high value for MAX_LENGTH. Please reconsider. Continuing anyway...")
+            logging.warning("Very high value for MAX_LENGTH. Please reconsider. Continuing anyway...")
 
     def init_db(self, source_langs):
         if not self.function_exists('prepare_or_tsquery'):
@@ -212,7 +212,7 @@ ORDER BY rank DESC;
         for slang in source_langs:
             slang = lang_to_table(slang)
             cursor = self.get_cursor()
-            cursor.execute("DROP SCHEMA IF EXISTS %s CASCADE" % slang)
+            cursor.execute(sql.SQL("DROP SCHEMA IF EXISTS {} CASCADE").format(sql.Identifier(slang)))
             cursor.connection.commit()
             self.source_langs.discard(slang)
 
@@ -271,7 +271,6 @@ ORDER BY rank DESC;
         # passed arguments?
         slang = lang_to_table(source_lang)
         tlang = lang_to_table(target_lang)
-        lang_config = lang_to_config(slang)
 
         if cursor is None:
             cursor = self.get_cursor(slang)
@@ -281,7 +280,6 @@ ORDER BY rank DESC;
                 'target': str(unit.target),
                 'source_lang': slang,
                 'target_lang': tlang,
-                'lang_config': lang_config,
             }
 
             # Unlike add_list()/add_store(), this inserts a single unit, so
@@ -330,7 +328,12 @@ ORDER BY rank DESC;
 
         checker = project_checker(project_style, source_lang)
 
-        cursor = self.get_cursor(source_lang)
+        # get_cursor() needs the table-safe schema name, not the raw code
+        # (e.g. "pt_BR" is a schema named "pt_br"): using the raw code here
+        # used to SET SCHEMA to one that doesn't exist, silently leaving the
+        # connection's default "public" schema active and breaking every
+        # unqualified sources/targets query below.
+        cursor = self.get_cursor(lang_to_table(source_lang))
         select_query = """SELECT text, sid FROM sources WHERE
         text IN %(list)s"""
 
@@ -437,7 +440,6 @@ ORDER BY rank DESC;
         """
         slang = lang_to_table(source_lang)
         tlang = lang_to_table(target_lang)
-        lang_config = lang_to_config(slang)
         assert slang in self.source_langs
         if slang == tlang:
             # These won't be returned when querying, so it is useless to even
@@ -458,7 +460,6 @@ ORDER BY rank DESC;
                         unit.update({
                             'source_lang': slang,
                             'target_lang': tlang,
-                            'lang_config': lang_config,
                         })
                         self.add_dict(unit, cursor=cursor)
                         count += 1
@@ -488,12 +489,12 @@ ORDER BY rank DESC;
             self._comparer = LevenshteinComparer(max_length)
         return self._comparer
 
-    def _translate_query(self, cursor, slang, tlang, query, min_len, max_len, min_rank):
+    def _translate_query(self, cursor, slang, tlang, lang_config, query,
+                        min_len, max_len, min_rank):
         if slang not in self._prepared_statements[id(cursor.connection)]:
             if not self.prepared_statement_exists("lookup"):
                 cursor.execute(self.PREPARE_LOOKUP)
             self._prepared_statements[id(cursor.connection)].add(slang)
-        lang_config = lang_to_config(slang)
         cursor.execute("EXECUTE lookup (%s, %s, %s, %s, %s, %s)",
                        (lang_config, query, tlang, min_len, max_len, min_rank))
 
@@ -525,9 +526,14 @@ ORDER BY rank DESC;
 
         minrank = max(min_similarity / 2, 30)
 
+        # Must match the lang_config get_all_sids() indexed sources.vector
+        # with (based on the raw source_lang, not the table-safe slang), or
+        # the tsquery below silently fails to match anything.
+        lang_config = lang_to_config(source_lang)
+
         cursor = self.get_cursor(slang)
         try:
-            self._translate_query(cursor, slang, tlang,
+            self._translate_query(cursor, slang, tlang, lang_config,
                                   indexing_version(unit_source, checker),
                                   minlen, maxlen, minrank)
         except postgres.psycopg2.ProgrammingError:

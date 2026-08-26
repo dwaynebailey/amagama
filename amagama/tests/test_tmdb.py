@@ -48,6 +48,22 @@ class TestTMDB(object):
             # Was giving traceback psycopg2.ProgrammingError:
             amagama.tmdb.translate_unit('<a "\\b">', "en", "af")
 
+    def test_source_lang_with_region_code(self, amagama):
+        # Regression test: get_all_sids() used to SET SCHEMA to the raw
+        # source_lang instead of its table-safe form (e.g. "pt_BR" rather
+        # than the actual schema "pt_br"), breaking import for any source
+        # language with a region subtag. Fixing that also exposed a related
+        # bug: lang_to_config() was queried with different normalization at
+        # indexing time vs. query time, so even once import worked, lookups
+        # for such a source language silently returned nothing.
+        with amagama.app_context():
+            amagama.tmdb.init_db(['pt_BR'])
+            amagama.tmdb.add_test_unit('Hello', 'Ola', 'pt_BR', 'fr')
+            result0 = amagama.tmdb.translate_unit("Hello", "pt_BR", "fr")[0]
+            assert result0["source"] == "Hello"
+            assert result0["target"] == "Ola"
+            assert result0["quality"] == 100
+
     def test_length_bounds(self):
         assert tmdb.min_levenshtein_length(100, 70) == 70
         assert tmdb.max_levenshtein_length(100, 70, 1000) == 142

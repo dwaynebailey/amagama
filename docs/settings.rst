@@ -38,7 +38,8 @@ Settings to define amaGama server behavior.
   Default: ``foobar``
 
   The secret key to use for keeping the sessions secure. Choose a long random
-  string and keep this secret.
+  string and keep this secret. amaGama logs a warning on startup if this is
+  left at its default value.
 
 
 .. setting:: ENABLE_WEB_UI

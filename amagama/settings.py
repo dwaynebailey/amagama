@@ -1,6 +1,8 @@
 # Global config
 
 DEBUG = False
+# Insecure placeholder: amaGama warns on startup if this is left unchanged.
+# Override it with a long random string in your AMAGAMA_CONFIG file.
 SECRET_KEY = "foobar"
 ENABLE_WEB_UI = False
 ENABLE_DATA_ALTERING_API = False

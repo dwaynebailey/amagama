@@ -8,14 +8,6 @@ weight = 0.8
 tags = ["discovered"]
 
 [[block]]
-name = "linguas-vlc"
-title = "vlc"
-url = "https://code.videolan.org/videolan/vlc"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-2.0-only"
-
-[[block]]
 name = "linguas-meld"
 disabled = "duplicates Damned Lies module meld"
 title = "meld"
@@ -40,6 +32,7 @@ name = "linguas-Constrict"
 disabled = "duplicates Damned Lies module Constrict"
 title = "Constrict"
 url = "https://gitlab.gnome.org/World/Constrict"
+mirror = "https://github.com/Wartybix/Constrict"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
@@ -49,6 +42,7 @@ name = "linguas-pika-backup"
 disabled = "duplicates Damned Lies module pika-backup"
 title = "pika-backup"
 url = "https://gitlab.gnome.org/World/pika-backup"
+mirror = "https://github.com/pika-backup/pika-backup"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
@@ -58,6 +52,7 @@ name = "linguas-NetworkManager"
 disabled = "duplicates Damned Lies module NetworkManager"
 title = "NetworkManager"
 url = "https://gitlab.freedesktop.org/NetworkManager/NetworkManager"
+mirror = "https://github.com/NetworkManager/NetworkManager"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
@@ -203,6 +198,7 @@ licence = "GPL-2.0-only"
 name = "linguas-Collision"
 title = "Collision"
 url = "https://codeberg.org/GeopJr/Collision"
+mirror = "https://github.com/GeopJr/Collision"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "BSD-2-Clause"
@@ -221,6 +217,7 @@ name = "linguas-nano"
 disabled = "duplicates Translation Project domain nano"
 title = "nano"
 url = "git://git.sv.gnu.org/nano.git"
+mirror = "https://github.com/madnight/nano"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
@@ -249,6 +246,7 @@ name = "linguas-phosh"
 disabled = "duplicates Damned Lies module phosh"
 title = "phosh"
 url = "https://gitlab.gnome.org/World/Phosh/phosh"
+mirror = "https://github.com/PhoshMobi/phosh"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
@@ -278,6 +276,7 @@ name = "linguas-ModemManager"
 disabled = "duplicates Damned Lies module ModemManager"
 title = "ModemManager"
 url = "https://gitlab.freedesktop.org/mobile-broadband/ModemManager"
+mirror = "https://github.com/linux-mobile-broadband/ModemManager"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
@@ -326,6 +325,7 @@ name = "linguas-wireplumber"
 disabled = "duplicates Damned Lies module WirePlumber"
 title = "wireplumber"
 url = "https://gitlab.freedesktop.org/pipewire/wireplumber"
+mirror = "https://github.com/PipeWire/wireplumber"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "MIT"
@@ -857,20 +857,20 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
-name = "linguas-warehouse"
-title = "warehouse"
-url = "https://github.com/flattool/warehouse"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-3.0-only"
-
-[[block]]
 name = "linguas-jwm"
 title = "jwm"
 url = "https://github.com/joewing/jwm"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "MIT"
+
+[[block]]
+name = "linguas-warehouse"
+title = "warehouse"
+url = "https://github.com/flattool/warehouse"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-3.0-only"
 
 [[block]]
 name = "linguas-geeqie"
@@ -969,14 +969,6 @@ sparse = ["po/*.po"]
 licence = "ISC"
 
 [[block]]
-name = "linguas-Errands"
-title = "Errands"
-url = "https://github.com/mrvladus/Errands"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "MIT"
-
-[[block]]
 name = "linguas-fcitx5-lotus"
 title = "fcitx5-lotus"
 url = "https://github.com/LotusInputMethod/fcitx5-lotus"
@@ -985,12 +977,28 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
+name = "linguas-Errands"
+title = "Errands"
+url = "https://github.com/mrvladus/Errands"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "MIT"
+
+[[block]]
 name = "linguas-NetworkManager-l2tp"
 title = "NetworkManager-l2tp"
 url = "https://github.com/nm-l2tp/NetworkManager-l2tp"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
+
+[[block]]
+name = "linguas-penguin-mail"
+title = "penguin-mail"
+url = "https://github.com/c9dev/penguin-mail"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-3.0-only"
 
 [[block]]
 name = "linguas-Curtail"
@@ -1008,14 +1016,6 @@ url = "https://github.com/amsynth/amsynth"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
-
-[[block]]
-name = "linguas-penguin-mail"
-title = "penguin-mail"
-url = "https://github.com/c9dev/penguin-mail"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-3.0-only"
 
 [[block]]
 name = "linguas-mousam"
@@ -1083,20 +1083,20 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
-name = "linguas-partclone"
-title = "partclone"
-url = "https://github.com/Thomas-Tsai/partclone"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-2.0-only"
-
-[[block]]
 name = "linguas-sfwbar"
 title = "sfwbar"
 url = "https://github.com/LBCrion/sfwbar"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
+
+[[block]]
+name = "linguas-partclone"
+title = "partclone"
+url = "https://github.com/Thomas-Tsai/partclone"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-2.0-only"
 
 [[block]]
 name = "linguas-elektroid"
@@ -1332,20 +1332,20 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
-name = "linguas-sticky"
-title = "sticky"
-url = "https://github.com/vixalien/sticky"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "MIT"
-
-[[block]]
 name = "linguas-pantheon-tweaks"
 title = "pantheon-tweaks"
 url = "https://github.com/pantheon-tweaks/pantheon-tweaks"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
+
+[[block]]
+name = "linguas-sticky"
+title = "sticky"
+url = "https://github.com/vixalien/sticky"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "MIT"
 
 [[block]]
 name = "linguas-msmtp"
@@ -1432,20 +1432,20 @@ sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
 
 [[block]]
-name = "linguas-Bavarder"
-title = "Bavarder"
-url = "https://github.com/Bavarder/Bavarder"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-3.0-only"
-
-[[block]]
 name = "linguas-xiphos"
 title = "xiphos"
 url = "https://github.com/crosswire/xiphos"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
+
+[[block]]
+name = "linguas-Bavarder"
+title = "Bavarder"
+url = "https://github.com/Bavarder/Bavarder"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-3.0-only"
 
 [[block]]
 name = "linguas-soundconverter"
@@ -1536,20 +1536,20 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
-name = "linguas-linyaps"
-title = "linyaps"
-url = "https://github.com/OpenAtom-Linyaps/linyaps"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "LGPL-3.0-only"
-
-[[block]]
 name = "linguas-mail"
 title = "mail"
 url = "https://github.com/elementary/mail"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
+
+[[block]]
+name = "linguas-linyaps"
+title = "linyaps"
+url = "https://github.com/OpenAtom-Linyaps/linyaps"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "LGPL-3.0-only"
 
 [[block]]
 name = "linguas-color-picker"
@@ -1563,6 +1563,14 @@ licence = "GPL-3.0-only"
 name = "linguas-DAR"
 title = "DAR"
 url = "https://github.com/Edrusb/DAR"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-2.0-only"
+
+[[block]]
+name = "linguas-xarchiver"
+title = "xarchiver"
+url = "https://github.com/ib/xarchiver"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
@@ -1582,14 +1590,6 @@ url = "https://github.com/vmkspv/lenspect"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
-
-[[block]]
-name = "linguas-xarchiver"
-title = "xarchiver"
-url = "https://github.com/ib/xarchiver"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-2.0-only"
 
 [[block]]
 name = "linguas-dnfdragora"
@@ -1875,6 +1875,22 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
+name = "linguas-simple-taskbar"
+title = "simple-taskbar"
+url = "https://github.com/Sultech/simple-taskbar"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-2.0-only"
+
+[[block]]
+name = "linguas-OpenXMB"
+title = "OpenXMB"
+url = "https://github.com/phenom64/OpenXMB"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-3.0-only"
+
+[[block]]
 name = "linguas-music"
 title = "music"
 url = "https://github.com/elementary/music"
@@ -1891,14 +1907,6 @@ sparse = ["po/*.po"]
 licence = "GPL-2.0-only"
 
 [[block]]
-name = "linguas-simple-taskbar"
-title = "simple-taskbar"
-url = "https://github.com/Sultech/simple-taskbar"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-2.0-only"
-
-[[block]]
 name = "linguas-pavucontrol"
 title = "pavucontrol"
 url = "https://github.com/pulseaudio/pavucontrol"
@@ -1910,14 +1918,6 @@ licence = "GPL-2.0-only"
 name = "linguas-Halftone"
 title = "Halftone"
 url = "https://github.com/tfuxu/Halftone"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-3.0-only"
-
-[[block]]
-name = "linguas-OpenXMB"
-title = "OpenXMB"
-url = "https://github.com/phenom64/OpenXMB"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
@@ -2092,6 +2092,14 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
+name = "linguas-apt-dater"
+title = "apt-dater"
+url = "https://github.com/DE-IBH/apt-dater"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-2.0-only"
+
+[[block]]
 name = "linguas-dock"
 title = "dock"
 url = "https://github.com/elementary/dock"
@@ -2109,14 +2117,6 @@ sparse = ["po/*.po"]
 licence = "GPL-3.0-only"
 
 [[block]]
-name = "linguas-apt-dater"
-title = "apt-dater"
-url = "https://github.com/DE-IBH/apt-dater"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-2.0-only"
-
-[[block]]
 name = "linguas-passes"
 title = "passes"
 url = "https://github.com/pablo-s/passes"
@@ -2131,14 +2131,6 @@ url = "https://github.com/ellie-commons/taxi"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "LGPL-3.0-only"
-
-[[block]]
-name = "linguas-agenda"
-title = "agenda"
-url = "https://github.com/dahenson/agenda"
-files = ["po/{lang}.po"]
-sparse = ["po/*.po"]
-licence = "GPL-3.0-only"
 
 [[block]]
 name = "linguas-photos"
@@ -2168,6 +2160,14 @@ licence = "GPL-3.0-only"
 name = "linguas-blackbox-terminal"
 title = "blackbox-terminal"
 url = "https://github.com/yonasBSD/blackbox-terminal"
+files = ["po/{lang}.po"]
+sparse = ["po/*.po"]
+licence = "GPL-3.0-only"
+
+[[block]]
+name = "linguas-agenda"
+title = "agenda"
+url = "https://github.com/dahenson/agenda"
 files = ["po/{lang}.po"]
 sparse = ["po/*.po"]
 licence = "GPL-3.0-only"

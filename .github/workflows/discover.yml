@@ -8,6 +8,8 @@ on:
     # The 3rd of each month, 04:17 UTC.
     - cron: "17 4 3 * *"
   workflow_dispatch:
+  push:
+    branches: [discover-test]
 
 permissions:
   contents: read

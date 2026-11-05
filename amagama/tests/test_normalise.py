@@ -30,6 +30,15 @@ class TestIndexingVersion(object):
     def test_accelerators(self, gnome, text, indexed):
         assert indexing_version(text, gnome) == indexed
 
+    @pytest.mark.parametrize('text, indexed', [
+        ('Fish &amp; chips', 'Fish &amp; chips'),
+        ('&#169; &Fish', '&#169; Fish'),
+        ('&Save &#x2014; now', 'Save &#x2014; now'),
+    ])
+    @pytest.mark.parametrize('style', ['kde', 'mozilla'])
+    def test_entities_are_not_accelerators(self, style, text, indexed):
+        assert indexing_version(text, project_checker(style, 'en')) == indexed
+
     def test_no_checker_keeps_accelerators(self):
         assert indexing_version('_Open') == '_Open'
 

@@ -18,7 +18,8 @@ from amagama.source_options import SourceOptions
 from amagama.tmdb import AbstractionMismatch, lang_to_table
 
 
-# Let's encourage caching for an hour:
+# Let's encourage caching for an hour. A reply keeps the Headers it is
+# given and adds its own to them, so each gets a copy.
 cache_headers = Headers()
 cache_headers['Cache-Control'] = "max-age=3600, public"
 
@@ -83,7 +84,7 @@ def translate_unit(slang, tlang, uid):
                                                  max_candidates, source_options)
     response = jsonwrapper(candidates)
     return current_app.response_class(response, mimetype='application/json',
-                                      headers=cache_headers)
+                                      headers=Headers(cache_headers))
 
 
 @read_api_v2.route('/<slang>/<tlang>/unit/', methods=('GET', ))
@@ -113,7 +114,7 @@ def translate_abstract(slang, tlang):
                                           mimetype='application/json')
     response = jsonwrapper({'abstraction': version, 'matches': matches})
     return current_app.response_class(response, mimetype='application/json',
-                                      headers=cache_headers)
+                                      headers=Headers(cache_headers))
 
 
 @write_api.route('/<slang>/<tlang>/unit/<path:uid>', methods=('POST', ))
@@ -178,7 +179,7 @@ def get_languages():
     languages = current_app.tmdb.available_languages
     response = jsonwrapper(languages)
     return current_app.response_class(response, mimetype='application/json',
-                                      headers=cache_headers)
+                                      headers=Headers(cache_headers))
 
 
 @read_api.route('/sources/', methods=('GET', ))

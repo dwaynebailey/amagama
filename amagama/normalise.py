@@ -8,6 +8,11 @@
 
 """Functionality for text normalisation."""
 
+import re
+
+# An entity's "&" (in "&amp;") is no accelerator marker.
+_ENTITY_RE = re.compile(r'&(?:[A-Za-z][\w.-]*|#[0-9]+|#[xX][0-9A-Fa-f]+);')
+
 
 def indexing_version(s, checker=None):
     """Transform the given string to something more suitable for indexing."""
@@ -21,15 +26,15 @@ def strip_accelerator(s, checker):
         return s
 
     accel = checker.config.accelmarkers[0]
-    if s.count(accel) != 1:
-        # TODO: in mozilla, XML entities could mess this up.
+    plain = _ENTITY_RE.sub(lambda m: ' ' * len(m.group()), s) if accel == '&' else s
+    if plain.count(accel) != 1:
         return s
 
-    accel_pos = s.find(accel)
+    accel_pos = plain.find(accel)
     accel_char = s[accel_pos+1:accel_pos+2]
     valid_accel = checker.config.sourcelang.validaccel
     if (valid_accel and accel_char in valid_accel) or accel_char.isalnum():
-        return s.replace(accel, u"", 1)
+        return s[:accel_pos] + s[accel_pos + 1:]
 
     return s
 

@@ -462,6 +462,33 @@ def load_snapshot(source_langs, name, block, licence):
               % ((name, slang, BUILD_PREFIX, slang) + counts))
 
 
+@click.command('recompute_abstracts')
+@source_language_option
+@build_option
+@click.option('--snapshot', default=None, callback=lambda ctx, param, value: value and
+              snapshot_name(ctx, param, value),
+              help="Work on the snapshot _<name>_<lang> instead, e.g. legacy")
+@with_appcontext
+def recompute_abstracts(source_langs, build, snapshot):
+    """Make the sources' abstracts, lengths and search vectors again.
+
+    For a schema made before abstracts or by another version of the
+    abstraction, such as the legacy snapshot that each rebuild loads.
+    """
+    if build and snapshot:
+        raise click.UsageError("Use only one of --build and --snapshot.")
+    use_build_schemas(build)
+    tmdb = current_app.tmdb
+    for slang in source_langs:
+        slang = lang_to_table(slang)
+        schema = "_%s_%s" % (snapshot, slang) if snapshot else tmdb.schema(slang)
+        if not tmdb._schema_exists(tmdb.get_cursor(), schema):
+            print("Schema %s doesn't exist." % schema)
+            raise SystemExit(1)
+        changed = tmdb.recompute_abstracts(slang, schema)
+        print("Recomputed %s: %d sources changed." % (schema, changed))
+
+
 def configured_blocks(tags=()):
     """The sources file's blocks in the configured set, and with any of tags
     if given; exits on a sources file or tag that isn't valid."""
@@ -1025,6 +1052,7 @@ cli_commands = (
     build_tmdb,
     snapshot_db,
     load_snapshot,
+    recompute_abstracts,
     fetch_sources,
     update,
     swap_db,

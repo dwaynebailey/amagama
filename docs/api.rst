@@ -5,6 +5,8 @@ amaGama API
 
 amaGama answers HTTP requests with JSON. The API lives under ``/api/v1/``;
 ``/tmserver/`` is the older path to the same read API and still works.
+``/api/v2/`` looks up strings with their placeables abstracted (see
+:ref:`api#v2`).
 
 
 .. _api#tm-suggestion-request:
@@ -251,6 +253,70 @@ An example:
          "sources": ["legacy-2019"]
        }
      ]
+
+
+.. _api#v2:
+
+TM suggestions for an abstract (API v2)
+=======================================
+
+amaGama stores each source with its abstract: every placeable (a variable such
+as ``%s`` or ``{0}``, a tag, an entity, a URL, an e-mail address, a file name,
+a number or a command-line option) reduced to one marker character for its
+kind, and the accelerator taken out. ``Delete %(count)s files`` and ``Delete {0}
+files`` have the same abstract, ``Delete \ue001 files``. The abstraction is
+`Virtaal <https://virtaal.translatehouse.org>`_'s (``virtaal/support/abstraction.py``),
+and has a version number that changes whenever an abstract of the same text
+could change.
+
+``GET <SERVER>/api/v2/<SOURCE_LANGUAGE>/<TARGET_LANGUAGE>/unit/?q=<ABSTRACT>&av=<VERSION>``
+looks up an abstract the client made, where:
+
++-------------------+-------------------------------------------+
+| Field             | Description                               |
++===================+===========================================+
+| q                 | The abstract of the string, URL escaped.  |
+|                   | Placeables never leave the client.        |
++-------------------+-------------------------------------------+
+| av                | The version of the abstraction that made  |
+|                   | it                                        |
++-------------------+-------------------------------------------+
+
+``min_similarity``, ``max_candidates``, ``exclude``, ``only``, ``weight``,
+``licence`` and ``jsoncallback`` work as in :ref:`v1 <api#providing-options>`;
+``style`` is accepted and ignored, since the abstraction removes every kind of
+accelerator. For example, with ``Delete %(count)s files``::
+
+    <SERVER>/api/v2/en/af/unit/?q=Delete%20%EE%80%81%20files&av=1
+
+The reply gives the version and the matches:
+
+.. code-block:: json
+
+    {
+      "abstraction": 1,
+      "matches": [
+        {
+          "source": "Delete {0} files",
+          "target": "Skrap {0} lêers",
+          "quality": 100.0,
+          "sources": ["gnome-51"]
+        }
+      ]
+    }
+
+``source`` and ``target`` are the stored text, with their own placeables;
+``quality`` compares the abstracts, so a match that differs only in its
+placeables scores 100. The client, which has both raw strings, scores the raw
+text itself and puts its own placeables into the target. There is no ``rank``.
+
+The reply is 409 when the stored abstracts were made by another version than
+``av``, or the database has none yet (``"abstraction"`` gives the stored
+version, or ``null``); the client should use :ref:`v1 <api#tm-suggestion-request>`
+then. It is 400 without ``q`` or a numeric ``av``, and otherwise as in v1.
+
+v1 searches the same abstracts: a v1 query is abstracted to find candidates,
+and its quality still compares the raw text.
 
 
 .. _api#languages:

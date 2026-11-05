@@ -486,7 +486,7 @@ ORDER BY rank DESC{order};
                     sql.Identifier(snapshot, 'abstraction'), sql.Identifier(slang, 'abstraction')))
             cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             raise
         return tuple(counts)
 
@@ -590,7 +590,7 @@ ORDER BY rank DESC{order};
                     WHERE i.iid = ANY(%s)""", (iids,))
             cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             raise
         targets = sum(row[2] for row in per_lang)
         snapshot_targets = sum(row[1] for row in per_lang)
@@ -655,7 +655,7 @@ ORDER BY rank DESC{order};
             targets = cursor.rowcount
             cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             self.forget_connection(cursor.connection)
             raise
         self.source_langs.add(slang)
@@ -749,7 +749,7 @@ ORDER BY rank DESC{order};
                         'indexed': indexing_version(fixed, checker), 'sid': sid})
             cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             raise
         current_app.cache.clear()
         return len(sources), len(targets), unconverted
@@ -811,7 +811,7 @@ ORDER BY rank DESC{order};
             cursor.execute(self.INIT_ABSTRACTION, (ABSTRACTION_VERSION,))
             cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             raise
         self._abstraction = {}
         for prepared in self._prepared_statements.values():
@@ -877,7 +877,7 @@ ORDER BY rank DESC{order};
                         sql.Identifier(old_name), sql.Identifier(new_name)))
             cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             raise
         self._available_langs = {}
         self._sources = None
@@ -1055,7 +1055,7 @@ ORDER BY rank DESC{order};
             if commit:
                 cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             raise
         return int(bool(added))
 
@@ -1254,7 +1254,7 @@ ORDER BY rank DESC{order};
             if commit:
                 cursor.connection.commit()
         except Exception:
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             raise
 
         if count:
@@ -1367,7 +1367,7 @@ ORDER BY rank DESC{order};
             # characters in the example string is not present, then no error is
             # thrown. The error is still present if any number of other letters
             # are included between any of the characters in the example string.
-            cursor.connection.rollback()
+            self.rollback(cursor.connection)
             return []
 
         results = []

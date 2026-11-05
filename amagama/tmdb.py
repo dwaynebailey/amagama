@@ -25,14 +25,16 @@ import math
 
 from flask import abort, current_app
 from psycopg2 import errors, sql
+from psycopg2.extras import execute_values
 from translate.lang import data
 from translate.search.lshtein import LevenshteinComparer
 from translate.storage import xliff
 
 from amagama import postgres
+from amagama.abstraction import ABSTRACTION_VERSION, abstract
 from amagama.mojibake import CANDIDATE_REGEX, unmangle
 from amagama.source_options import SourceOptions
-from amagama.normalise import indexing_version
+from amagama.normalise import abstract_indexing_version, indexing_version
 from amagama.updater.languages import normalise_language
 
 # Shorter strings always fit a btree index row (2704 bytes, with the row's
@@ -183,6 +185,24 @@ def _insert_indexable(cursor, query, params, text, returning=False):
     cursor.execute("RELEASE SAVEPOINT long_text")
     return row
 
+def source_columns(text):
+    """The abstract, length and text to index of a source.
+
+    The abstract is None when it is the text; length is the abstract's.
+    """
+    abstracted = abstract(text)[0]
+    return (None if abstracted == text else abstracted, len(abstracted),
+            abstract_indexing_version(abstracted))
+
+
+class AbstractionMismatch(Exception):
+    """The abstracts stored were made by another version of the abstraction."""
+
+    def __init__(self, version):
+        super().__init__(version)
+        self.version = version
+
+
 class TMDB(postgres.PostGres):
 
     INIT_FUNCTIONS = """
@@ -193,14 +213,26 @@ CREATE FUNCTION public.prepare_or_tsquery(text) RETURNS text AS $$
 $$ LANGUAGE SQL;
 """
 
+    # abstract is the text's abstract, or NULL when it is the text; length
+    # is the abstract's and vector is made from it, in a schema whose
+    # abstraction table holds the abstraction's version. Without that
+    # table (a schema made before abstracts), length and vector are the
+    # text's.
     INIT_SOURCE = """
 CREATE TABLE sources (
     sid SERIAL PRIMARY KEY,
     text TEXT NOT NULL,
+    abstract TEXT,
     vector TSVECTOR NOT NULL,
     length INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX sources_text_unique_idx ON sources (text);
+"""
+
+    INIT_ABSTRACTION = """
+CREATE TABLE IF NOT EXISTS abstraction (version INTEGER NOT NULL);
+DELETE FROM abstraction;
+INSERT INTO abstraction (version) VALUES (%s);
 """
 
     INIT_TARGET = """
@@ -264,9 +296,9 @@ CREATE INDEX targets_lang_sid_idx ON targets (lang, sid) WITH (fillfactor = 100)
 
     LOOKUP = """
 PREPARE {name} AS
-SELECT sid, source, target, rank from (
+SELECT sid, source, target, rank{abstract} from (
     SELECT s.sid, {tid}s.text AS source, t.text AS target,
-        TS_RANK(s.vector, query, 32) * 1744.93406073519 AS rank
+        {source_abstract}TS_RANK(s.vector, query, 32) * 1744.93406073519 AS rank
     FROM sources s JOIN targets t ON s.sid = t.sid,
     TO_TSQUERY($1, public.prepare_or_tsquery($2)) query
     WHERE t.lang = $3 AND s.length BETWEEN $4 AND $5
@@ -278,8 +310,19 @@ ORDER BY rank DESC{order};
     # Equal matches in import order, not the table's physical order (which
     # deploy_db sorts by length). A schema made before targets had a tid
     # can't tell, so its ties stay in physical order.
-    PREPARE_LOOKUP = LOOKUP.format(name="lookup", tid="t.tid, ", order=", tid")
-    PREPARE_LOOKUP_WITHOUT_TID = LOOKUP.format(name="lookup_without_tid", tid="", order="")
+    # {(has tid, has abstracts): (name, statement)}
+    LOOKUPS = {
+        (True, False): ("lookup", LOOKUP.format(
+            name="lookup", tid="t.tid, ", order=", tid", abstract="", source_abstract="")),
+        (False, False): ("lookup_without_tid", LOOKUP.format(
+            name="lookup_without_tid", tid="", order="", abstract="", source_abstract="")),
+        (True, True): ("lookup_abstract", LOOKUP.format(
+            name="lookup_abstract", tid="t.tid, ", order=", tid", abstract=", abstract",
+            source_abstract="COALESCE(s.abstract, s.text) AS abstract, ")),
+        (False, True): ("lookup_abstract_without_tid", LOOKUP.format(
+            name="lookup_abstract_without_tid", tid="", order="", abstract=", abstract",
+            source_abstract="COALESCE(s.abstract, s.text) AS abstract, ")),
+    }
     # TODO: stop returning "rank" once we're happy we have no users.
 
     schema_prefix = ''
@@ -290,6 +333,7 @@ ORDER BY rank DESC{order};
         self._sources = None
         self._weights = {}
         self._licences = {}
+        self._abstraction = {}
         self._load_source_langs()
         # set of languages with prepared statements per connection key:
         # {connection id: {slang: the lookup statement prepared for it}}
@@ -314,6 +358,7 @@ ORDER BY rank DESC{order};
         self._sources = None
         self._weights = {}
         self._licences = {}
+        self._abstraction = {}
         self._load_source_langs()
 
     def schema(self, slang):
@@ -345,7 +390,9 @@ ORDER BY rank DESC{order};
             cursor.execute(self.INIT_TARGET)
             cursor.execute(self.INIT_IMPORTS)
             cursor.execute(self.INIT_BLOCKS)
+            cursor.execute(self.INIT_ABSTRACTION, (ABSTRACTION_VERSION,))
             self.source_langs.add(slang)
+            self._abstraction.pop(slang, None)
             cursor.connection.commit()
 
     def init_imports(self, slang):
@@ -434,6 +481,9 @@ ORDER BY rank DESC{order};
                 cursor.execute(sql.SQL("CREATE TABLE {} AS TABLE {}").format(
                     sql.Identifier(snapshot, table), sql.Identifier(slang, table)))
                 counts.append(cursor.rowcount)
+            if self._has_relation(cursor, sql.Identifier(slang, 'abstraction').as_string(cursor)):
+                cursor.execute(sql.SQL("CREATE TABLE {} AS TABLE {}").format(
+                    sql.Identifier(snapshot, 'abstraction'), sql.Identifier(slang, 'abstraction')))
             cursor.connection.commit()
         except Exception:
             cursor.connection.rollback()
@@ -464,19 +514,32 @@ ORDER BY rank DESC{order};
             if cursor.fetchone()[0]:
                 raise ValueError("Schema %s isn't empty." % self.schema(slang))
 
+            # The snapshot's abstracts are kept if they are the build's
+            # kind, and made again otherwise.
+            version = self.abstraction_version(slang)
+            snapshot_version = None
+            if self._has_relation(cursor, sql.Identifier(snapshot, 'abstraction').as_string(cursor)):
+                cursor.execute(sql.SQL("SELECT MAX(version) FROM {}").format(
+                    sql.Identifier(snapshot, 'abstraction')))
+                snapshot_version = cursor.fetchone()[0]
+            columns = "sid, text, abstract, vector, length" if (
+                version is not None and version == snapshot_version) else "sid, text, vector, length"
             # Text under 1000 characters always fits the indexes.
-            cursor.execute(sql.SQL("""INSERT INTO sources (sid, text, vector, length)
-                SELECT sid, text, vector, length FROM {}
-                WHERE length <= %s AND length(text) < 1000
-                ON CONFLICT DO NOTHING""").format(snap_sources), (self.max_import_len,))
-            cursor.execute(sql.SQL("""SELECT sid, text, vector, length FROM {}
-                WHERE length <= %s AND length(text) >= 1000""").format(snap_sources),
+            cursor.execute(sql.SQL("""INSERT INTO sources ({columns})
+                SELECT {columns} FROM {snapshot}
+                WHERE length(text) <= %s AND length(text) < 1000
+                ON CONFLICT DO NOTHING""").format(columns=sql.SQL(columns), snapshot=snap_sources),
                 (self.max_import_len,))
+            cursor.execute(sql.SQL("""SELECT {columns} FROM {snapshot}
+                WHERE length(text) <= %s AND length(text) >= 1000""").format(
+                columns=sql.SQL(columns), snapshot=snap_sources), (self.max_import_len,))
+            insert = sql.SQL("INSERT INTO sources ({}) VALUES ({}) ON CONFLICT DO NOTHING").format(
+                sql.SQL(columns), sql.SQL(", ".join(["%s"] * len(columns.split(", ")))))
             for row in cursor.fetchall():
                 if self._indexable_string(row['text']):
-                    _insert_indexable(cursor, """INSERT INTO sources (sid, text, vector, length)
-                        VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING""",
-                        tuple(row), row['text'])
+                    _insert_indexable(cursor, insert, tuple(row), row['text'])
+            if version is not None and version != snapshot_version:
+                self._recompute(cursor, slang)
             cursor.execute("""SELECT setval(pg_get_serial_sequence('sources', 'sid'),
                 COALESCE(MAX(sid), 0) + 1, false) FROM sources""")
 
@@ -631,6 +694,8 @@ ORDER BY rank DESC{order};
 
         lang_config = lang_to_config(slang)
         checker = project_checker(None, slang)
+        abstracts = self.abstraction_version(slang) is not None
+        cursor = self.get_cursor(self.schema(slang))
         try:
             links = self._has_relation(cursor, 'target_imports')
             for sid, lang, text, fixed in targets:
@@ -668,6 +733,14 @@ ORDER BY rank DESC{order};
                     cursor.execute("UPDATE targets SET sid = %s WHERE sid = %s",
                                    (existing[0], sid))
                     cursor.execute("DELETE FROM sources WHERE sid = %s", (sid,))
+                elif abstracts:
+                    abstracted, length, indexed = source_columns(fixed)
+                    cursor.execute("""UPDATE sources SET text = %(text)s,
+                        abstract = %(abstract)s, length = %(length)s,
+                        vector = TO_TSVECTOR(%(lang_config)s, %(indexed)s)
+                        WHERE sid = %(sid)s""", {
+                        'text': fixed, 'abstract': abstracted, 'length': length,
+                        'lang_config': lang_config, 'indexed': indexed, 'sid': sid})
                 else:
                     cursor.execute("""UPDATE sources SET text = %(text)s, length = %(length)s,
                         vector = TO_TSVECTOR(%(lang_config)s, %(indexed)s)
@@ -725,6 +798,55 @@ ORDER BY rank DESC{order};
             WHERE length >= %s""", (min_levenshtein_length(lower_bound, similarity),))
         cursor.connection.commit()
 
+    def recompute_abstracts(self, slang, schema=None):
+        """Make every source's abstract, length and vector again, in the slang
+        schema or the named one (a snapshot), and record the abstraction's
+        version there. Returns the number of sources changed.
+        """
+        slang = lang_to_table(slang)
+        cursor = self.get_cursor(schema or self.schema(slang))
+        try:
+            cursor.execute("ALTER TABLE sources ADD COLUMN IF NOT EXISTS abstract TEXT")
+            changed = self._recompute(cursor, slang)
+            cursor.execute(self.INIT_ABSTRACTION, (ABSTRACTION_VERSION,))
+            cursor.connection.commit()
+        except Exception:
+            cursor.connection.rollback()
+            raise
+        self._abstraction = {}
+        for prepared in self._prepared_statements.values():
+            prepared.pop(slang, None)
+        return changed
+
+    @staticmethod
+    def _recompute(cursor, slang, batch=5000):
+        """Make the abstract, length and vector of every source in the
+        cursor's schema again, in its transaction; the number changed."""
+        lang_config = lang_to_config(slang)
+        cursor.execute("""CREATE TEMPORARY TABLE recomputed (
+            sid INTEGER, abstract TEXT, length INTEGER, indexed TEXT) ON COMMIT DROP""")
+        reader = cursor.connection.cursor(name="recompute_sources")
+        reader.itersize = batch
+        reader.execute("SELECT sid, text FROM sources")
+        rows = []
+        for sid, text in reader:
+            rows.append((sid,) + source_columns(text))
+            if len(rows) >= batch:
+                execute_values(cursor, "INSERT INTO recomputed VALUES %s", rows)
+                rows = []
+        if rows:
+            execute_values(cursor, "INSERT INTO recomputed VALUES %s", rows)
+        reader.close()
+        # Only changed rows: most sources have no placeable.
+        cursor.execute("""UPDATE sources s SET abstract = r.abstract, length = r.length,
+                vector = TO_TSVECTOR(%(config)s, r.indexed)
+            FROM recomputed r WHERE s.sid = r.sid
+            AND (s.abstract IS DISTINCT FROM r.abstract OR s.length <> r.length
+                OR s.vector <> TO_TSVECTOR(%(config)s, r.indexed))""", {'config': lang_config})
+        changed = cursor.rowcount
+        cursor.execute("DROP TABLE recomputed")
+        return changed
+
     def _schema_exists(self, cursor, name):
         cursor.execute("SELECT 1 FROM pg_namespace WHERE nspname = %s", (name,))
         return cursor.fetchone() is not None
@@ -761,6 +883,10 @@ ORDER BY rank DESC{order};
         self._sources = None
         self._weights = {}
         self._licences = {}
+        self._abstraction = {}
+        # A schema swapped in may need another lookup statement.
+        for prepared in self._prepared_statements.values():
+            prepared.pop(slang, None)
         self._load_source_langs()
         current_app.cache.clear()
 
@@ -861,6 +987,21 @@ ORDER BY rank DESC{order};
                 licences = dict(cursor.fetchall())
             self._licences[slang] = licences
         return self._licences[slang]
+
+    def abstraction_version(self, slang):
+        """The abstraction version of the slang schema's abstracts.
+
+        None for a schema made before abstracts: its length and vector are
+        the text's.
+        """
+        if slang not in self._abstraction:
+            cursor = self.get_cursor(self.schema(slang))
+            version = None
+            if self._has_relation(cursor, 'abstraction'):
+                cursor.execute("SELECT MAX(version) FROM abstraction")
+                version = cursor.fetchone()[0]
+            self._abstraction[slang] = version
+        return self._abstraction[slang]
 
     def get_sid(self, unit_dict, cursor):
         source = unit_dict['source']
@@ -979,6 +1120,7 @@ ORDER BY rank DESC{order};
             return set()
 
         checker = project_checker(project_style, source_lang)
+        abstracts = self.abstraction_version(lang_to_table(source_lang)) is not None
 
         cursor = self.get_cursor(schema)
         select_query = """SELECT text, sid FROM sources WHERE
@@ -989,17 +1131,29 @@ ORDER BY rank DESC{order};
         to_store = all_sources - already_cached - set(already_stored)
         if to_store:
             lang_config = lang_to_config(source_lang)
-            params = [{
+            params = []
+            for s in sorted(to_store):  # sorted to avoid deadlocks
+                if abstracts:
+                    abstracted, length, indexed = source_columns(s)
+                else:
+                    abstracted, length, indexed = None, len(s), indexing_version(s, checker)
+                params.append({
                     "lang_config": lang_config,
                     "source": s,
-                    "indexed_source": indexing_version(s, checker),
-                    "length": len(s),
-                } for s in sorted(to_store)  # sorted to avoid deadlocks
-            ]
+                    "abstract": abstracted,
+                    "indexed_source": indexed,
+                    "length": length,
+                })
             # A parallel import may add the same source first.
-            insert = """INSERT INTO sources (text, vector, length)
-                VALUES (%(source)s, TO_TSVECTOR(%(lang_config)s, %(indexed_source)s), %(length)s)
-                ON CONFLICT DO NOTHING"""
+            if abstracts:
+                insert = """INSERT INTO sources (text, abstract, vector, length)
+                    VALUES (%(source)s, %(abstract)s,
+                        TO_TSVECTOR(%(lang_config)s, %(indexed_source)s), %(length)s)
+                    ON CONFLICT DO NOTHING"""
+            else:
+                insert = """INSERT INTO sources (text, vector, length)
+                    VALUES (%(source)s, TO_TSVECTOR(%(lang_config)s, %(indexed_source)s), %(length)s)
+                    ON CONFLICT DO NOTHING"""
             cursor.executemany(insert, [p for p in params if not _long(p["source"])])
             rejected = {p["source"] for p in params if _long(p["source"])
                         and not _insert_indexable(cursor, insert, p, p["source"])}
@@ -1123,8 +1277,8 @@ ORDER BY rank DESC{order};
             cursor.execute("""SELECT EXISTS(SELECT 1 FROM information_schema.columns
                 WHERE table_schema = current_schema() AND table_name = 'targets'
                 AND column_name = 'tid')""")
-            name, statement = (("lookup", self.PREPARE_LOOKUP) if cursor.fetchone()[0]
-                               else ("lookup_without_tid", self.PREPARE_LOOKUP_WITHOUT_TID))
+            tid = cursor.fetchone()[0]
+            name, statement = self.LOOKUPS[tid, self.abstraction_version(slang) is not None]
             if not self.prepared_statement_exists(name):
                 cursor.execute(statement)
             prepared[slang] = name
@@ -1133,38 +1287,81 @@ ORDER BY rank DESC{order};
                        sql.Identifier(prepared[slang])),
                        (lang_config, query, tlang, min_len, max_len, min_rank))
 
+    def _lookup_languages(self, source_lang, target_lang):
+        slang = lang_to_table(source_lang)
+        if slang not in self.source_langs:
+            abort(404)
+        tlang = lang_to_table(target_lang)
+        if slang == tlang:
+            abort(400)
+        return slang, tlang
+
     def translate_unit(self, unit_source, source_lang, target_lang,
                        project_style=None, min_similarity=None,
                        max_candidates=None, source_options=None):
         """Return TM suggestions for unit_source, chosen by source_options."""
-        slang = lang_to_table(source_lang)
-        if slang not in self.source_langs:
-            abort(404)
-
-        tlang = lang_to_table(target_lang)
-        if slang == tlang:
-            abort(400)
+        slang, tlang = self._lookup_languages(source_lang, target_lang)
 
         if isinstance(unit_source, bytes):
             unit_source = str(unit_source, "utf-8")
 
-        checker = project_checker(project_style, source_lang)
+        if self.abstraction_version(slang) is None:
+            checker = project_checker(project_style, source_lang)
+            indexed = indexing_version(unit_source, checker)
+            shortest = len(unit_source)
+        else:
+            # Stored lengths are the abstracts', no longer than their text.
+            abstracted = abstract(unit_source)[0]
+            indexed = abstract_indexing_version(abstracted)
+            shortest = len(abstracted)
 
+        def quality(row, min_similarity):
+            return self.comparer.similarity(unit_source, row['source'], min_similarity)
+        results = self._lookup(slang, tlang, indexed, shortest, len(unit_source), quality,
+                               min_similarity, max_candidates, source_options)
+        for result in results:
+            result.pop('abstract', None)
+        return results
+
+    def translate_abstract(self, query, source_lang, target_lang, version,
+                           min_similarity=None, max_candidates=None, source_options=None):
+        """Return TM suggestions for the abstract query, scored on abstracts.
+
+        Raises AbstractionMismatch when the stored abstracts were made by
+        another version of the abstraction than version.
+        """
+        slang, tlang = self._lookup_languages(source_lang, target_lang)
+        stored = self.abstraction_version(slang)
+        if version != stored:
+            raise AbstractionMismatch(stored)
+
+        def quality(row, min_similarity):
+            return self.comparer.similarity(query, row['abstract'], min_similarity)
+        results = self._lookup(slang, tlang, abstract_indexing_version(query), len(query),
+                               len(query), quality, min_similarity, max_candidates,
+                               source_options)
+        for result in results:
+            del result['abstract'], result['rank']
+        return results
+
+    def _lookup(self, slang, tlang, indexed, shortest, longest, quality, min_similarity,
+                max_candidates, source_options):
+        """The suggestions whose stored length suits a query from shortest to
+        longest characters, and that match the indexed query, with a quality
+        of at least min_similarity."""
         max_length = current_app.config.get('MAX_LENGTH', 2000)
         min_similarity = max(min_similarity or current_app.config.get('MIN_SIMILARITY', 70), 70)
         max_candidates = min(max_candidates or current_app.config.get('MAX_CANDIDATES', 5), 30)
 
-        source_len = len(unit_source)
-        minlen = min_levenshtein_length(source_len, min_similarity)
-        maxlen = max_levenshtein_length(source_len, min_similarity, max_length)
+        # A one-character abstract ("%s" alone) must find itself.
+        minlen = min(min_levenshtein_length(shortest, min_similarity), shortest)
+        maxlen = max_levenshtein_length(longest, min_similarity, max_length)
 
         minrank = max(min_similarity / 2, 30)
 
         cursor = self.get_cursor(self.schema(slang))
         try:
-            self._translate_query(cursor, slang, tlang,
-                                  indexing_version(unit_source, checker),
-                                  minlen, maxlen, minrank)
+            self._translate_query(cursor, slang, tlang, indexed, minlen, maxlen, minrank)
         except postgres.psycopg2.ProgrammingError:
             # Avoid problems parsing strings like '<a "\b">'. If any of the
             # characters in the example string is not present, then no error is
@@ -1174,12 +1371,11 @@ ORDER BY rank DESC{order};
             return []
 
         results = []
-        similarity = self.comparer.similarity
         for row in cursor:
-            quality = similarity(unit_source, row['source'], min_similarity)
-            if quality >= min_similarity:
+            score = quality(row, min_similarity)
+            if score >= min_similarity:
                 result = dict(row)
-                result['quality'] = quality
+                result['quality'] = score
                 results.append(result)
         # Choosing needs the sources of every match, not just the best.
         self._add_sources(cursor, tlang, results)

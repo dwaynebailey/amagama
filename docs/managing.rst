@@ -185,6 +185,11 @@ longer than ``MAX_LENGTH``, and text too long for the database indexes. Each
 target language is recorded as an :ref:`import <importing#record>` under the
 given ``--block`` and optional ``--licence``.
 
+A snapshot made before sources had :ref:`abstracts <managing#recompute-abstracts>`,
+or by another version of the abstraction, gets them as it loads, which takes
+longer; :ref:`recompute_abstracts <managing#recompute-abstracts>` with
+``--snapshot`` makes them once in the snapshot itself.
+
 
 .. _managing#migrate-db:
 
@@ -206,6 +211,34 @@ already migrated is skipped, so the command can be run again. The old tables
 are left in place, so the old code keeps working until you switch over; drop
 them once the new version is in use. Run :ref:`deploy_db <managing#deploy-db>`
 afterwards.
+
+
+.. _managing#recompute-abstracts:
+
+recompute_abstracts
+-------------------
+
+Each source is stored with its abstract, the text with each placeable (a
+variable, tag, entity, URL, e-mail address, file name, number or command-line
+option) reduced to one marker character and the accelerator taken out, so that
+strings that differ only in those match. A source's
+length and search words come from its abstract. The abstract is made by a copy
+of `Virtaal <https://virtaal.translatehouse.org>`_'s abstraction, and each
+schema records the version that made its abstracts.
+
+A schema made before abstracts is searched by its text as before. This subcommand makes every abstract, length and search vector
+again and records the version, in the live schema, the build schema
+(``--build``), or a snapshot (``--snapshot <name>`` for ``_<name>_<lang>``):
+
+.. code-block:: bash
+
+    $ amagama-manage recompute_abstracts -s en --snapshot legacy
+    Recomputed _legacy_en: 81203 sources changed.
+
+It runs in one transaction and changes only the sources whose abstract, length
+or vector differ, so it can be run again. A rebuild with :ref:`update
+<managing#update>` makes every abstract anew, so this is needed only for a
+snapshot, or to give a live schema abstracts without a rebuild.
 
 
 .. _managing#repair-mojibake:

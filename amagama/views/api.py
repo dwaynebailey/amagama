@@ -15,7 +15,7 @@ from werkzeug.datastructures import Headers
 
 from amagama import titles
 from amagama.source_options import SourceOptions
-from amagama.tmdb import lang_to_table
+from amagama.tmdb import AbstractionMismatch, lang_to_table
 
 
 # Let's encourage caching for an hour. A reply keeps the Headers it is
@@ -26,6 +26,8 @@ cache_headers['Cache-Control'] = "max-age=3600, public"
 # Create the blueprints.
 read_api = Blueprint('read_api', __name__)
 write_api = Blueprint('write_api', __name__)
+# Lookups by abstract: each placeable reduced to a marker.
+read_api_v2 = Blueprint('read_api_v2', __name__)
 
 
 @write_api.before_request
@@ -81,6 +83,36 @@ def translate_unit(slang, tlang, uid):
                                                  project_style, min_similarity,
                                                  max_candidates, source_options)
     response = jsonwrapper(candidates)
+    return current_app.response_class(response, mimetype='application/json',
+                                      headers=Headers(cache_headers))
+
+
+@read_api_v2.route('/<slang>/<tlang>/unit/', methods=('GET', ))
+def translate_abstract(slang, tlang):
+    """Return the translations for the abstract q, made by abstraction version av.
+
+    Quality compares abstracts. 409 when the stored abstracts were made by
+    another version; the reply then names the stored one, or null.
+    """
+    query = request.args.get('q', '')
+    version = get_int_arg(request, 'av')
+    if not query or version is None:
+        abort(400)
+    min_similarity = get_int_arg(request, 'min_similarity')
+    max_candidates = get_int_arg(request, 'max_candidates')
+    try:
+        source_options = SourceOptions.from_args(request.args)
+    except ValueError:
+        abort(400)
+
+    try:
+        matches = current_app.tmdb.translate_abstract(query, slang, tlang, version,
+                                                      min_similarity, max_candidates,
+                                                      source_options)
+    except AbstractionMismatch as e:
+        return current_app.response_class(jsonwrapper({'abstraction': e.version}), status=409,
+                                          mimetype='application/json')
+    response = jsonwrapper({'abstraction': version, 'matches': matches})
     return current_app.response_class(response, mimetype='application/json',
                                       headers=Headers(cache_headers))
 

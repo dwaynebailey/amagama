@@ -221,12 +221,13 @@ recompute_abstracts
 Each source is stored with its abstract, the text with each placeable (a
 variable, tag, entity, URL, e-mail address, file name, number or command-line
 option) reduced to one marker character and the accelerator taken out, so that
-strings that differ only in those match. A source's
+strings that differ only in those match (see :ref:`API v2 <api#v2>`). A source's
 length and search words come from its abstract. The abstract is made by a copy
 of `Virtaal <https://virtaal.translatehouse.org>`_'s abstraction, and each
 schema records the version that made its abstracts.
 
-A schema made before abstracts is searched by its text as before. This subcommand makes every abstract, length and search vector
+A schema made before abstracts is searched by its text as before, and API v2
+answers 409 for it. This subcommand makes every abstract, length and search vector
 again and records the version, in the live schema, the build schema
 (``--build``), or a snapshot (``--snapshot <name>`` for ``_<name>_<lang>``):
 

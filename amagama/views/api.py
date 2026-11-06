@@ -82,6 +82,7 @@ def translate_unit(slang, tlang, uid):
     candidates = current_app.tmdb.translate_unit(uid, slang, tlang,
                                                  project_style, min_similarity,
                                                  max_candidates, source_options)
+    count_lookup(slang, tlang, 1, candidates)
     response = jsonwrapper(candidates)
     return current_app.response_class(response, mimetype='application/json',
                                       headers=Headers(cache_headers))
@@ -112,6 +113,7 @@ def translate_abstract(slang, tlang):
     except AbstractionMismatch as e:
         return current_app.response_class(jsonwrapper({'abstraction': e.version}), status=409,
                                           mimetype='application/json')
+    count_lookup(slang, tlang, 2, matches)
     response = jsonwrapper({'abstraction': version, 'matches': matches})
     return current_app.response_class(response, mimetype='application/json',
                                       headers=Headers(cache_headers))
@@ -197,6 +199,11 @@ def get_sources():
 ###############################################################################
 # View helpers                                                                #
 ###############################################################################
+
+def count_lookup(slang, tlang, api, results):
+    if current_app.lookup_counts:
+        current_app.lookup_counts.record(lang_to_table(slang), lang_to_table(tlang), api, results)
+
 
 def get_int_arg(request, arg_name):
     """Return the specified integer argument from request, or None."""

@@ -15,7 +15,7 @@ from flask import Flask
 from flask_caching import Cache
 
 from amagama import poparser_compat  # noqa: F401 - patches the PO parser on import
-from amagama import tmdb
+from amagama import lookupcounts, tmdb
 from amagama.views import api
 
 # The placeholder in settings.py.
@@ -38,6 +38,7 @@ class AmagamaServer(Flask):
         self.config.setdefault('CACHE_TYPE', 'SimpleCache')
         self.cache = Cache(self)
         self.tmdb = tmdb.TMDB(self)
+        self.lookup_counts = lookupcounts.counter_for(self)
 
 
 def amagama_server_factory():

@@ -7,6 +7,7 @@
 
 
 import collections
+import csv
 import functools
 import datetime
 import hashlib
@@ -28,7 +29,7 @@ from translate.lang.data import langcode_ire
 from translate.lang.identify import LanguageIdentifier
 from translate.storage import factory
 
-from amagama import logsummary
+from amagama import logsummary, lookupcounts
 from amagama.licences import normalise_licence
 from amagama.source_options import MAX_WEIGHT
 from amagama.updater import discovery, generate, status, transifex, weblate
@@ -1075,6 +1076,37 @@ def summarise_logs(logs, output, since, until):
     print(message, file=sys.stderr)
 
 
+@click.command('init_lookup_counts')
+@click.option('--grant', metavar='ROLE',
+              help="Let ROLE, the web app's database user, add to the counts.")
+@with_appcontext
+def init_lookup_counts(grant):
+    """Create the table of lookup counts (initdb does too)."""
+    cursor = current_app.tmdb.get_cursor()
+    lookupcounts.init_db(cursor, grant)
+    cursor.connection.commit()
+    print("The lookup_counts table is ready.")
+
+
+@click.command('lookup_counts')
+@click.option('--since', type=click.DateTime(formats=["%Y-%m-%d"]), help="The first day to show.")
+@click.option('--until', type=click.DateTime(formats=["%Y-%m-%d"]), help="The last day to show.")
+@click.option('--json', 'as_json', is_flag=True, help="Print a JSON line per row instead of CSV.")
+@with_appcontext
+def lookup_counts(since, until, as_json):
+    """Print the lookups per day, language pair and API version, with the
+    lookups that matched and the best match's quality bands."""
+    rows = lookupcounts.read(current_app.tmdb.get_cursor(), since and since.date(),
+                             until and until.date())
+    if as_json:
+        for row in rows:
+            print(json.dumps(dict(zip(lookupcounts.HEADER, row))))
+        return
+    writer = csv.writer(sys.stdout, lineterminator="\n")
+    writer.writerow(lookupcounts.HEADER)
+    writer.writerows(rows)
+
+
 cli_commands = (
     initdb,
     dropdb,
@@ -1091,6 +1123,8 @@ cli_commands = (
     update,
     swap_db,
     summarise_logs,
+    init_lookup_counts,
+    lookup_counts,
     weblate_sources,
     transifex_sources,
     discover_sources,

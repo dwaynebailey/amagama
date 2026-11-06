@@ -30,7 +30,7 @@ from translate.lang import data
 from translate.search.lshtein import LevenshteinComparer
 from translate.storage import xliff
 
-from amagama import postgres
+from amagama import lookupcounts, postgres
 from amagama.abstraction import ABSTRACTION_VERSION, abstract
 from amagama.mojibake import CANDIDATE_REGEX, unmangle
 from amagama.source_options import SourceOptions
@@ -379,6 +379,9 @@ ORDER BY rank DESC{order};
             cursor = self.get_cursor()
             cursor.execute(self.INIT_FUNCTIONS)
             cursor.connection.commit()
+        cursor = self.get_cursor()
+        lookupcounts.init_db(cursor)
+        cursor.connection.commit()
 
         for slang in source_langs:
             slang = lang_to_table(slang)

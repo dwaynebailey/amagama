@@ -6,6 +6,7 @@
 # the AUTHORS.md file for copyright and authorship information.
 
 
+import atexit
 import os
 import sys
 
@@ -19,3 +20,5 @@ import amagama.application  # noqa: E402
 
 
 application = amagama.application.amagama_server_factory()
+if application.lookup_counts:
+    atexit.register(application.lookup_counts.flush)

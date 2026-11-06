@@ -55,6 +55,15 @@ UPDATER_TAGS = None
 UPDATER_EXCLUDE_TAGS = []
 
 
+# Lookup counts
+#
+# Count lookups per day, language pair, API version and best match's quality
+# in the lookup_counts table, adding each process's counts every
+# LOOKUP_COUNTS_INTERVAL seconds.
+LOOKUP_COUNTS = True
+LOOKUP_COUNTS_INTERVAL = 60
+
+
 # Levenshtein config
 
 MAX_LENGTH = 2000

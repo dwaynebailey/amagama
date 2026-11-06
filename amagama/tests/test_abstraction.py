@@ -30,7 +30,7 @@ def test_markers():
         ('JavaMessageFormatPlaceable', ''),
         ('FormattingPlaceable', ''),
         ('QtFormattingPlaceable', ''),
-        ('UrlPlaceable', ''),
+        ('_UrlPlaceable', ''),
         ('FilePlaceable', ''),
         ('EmailPlaceable', ''),
         ('OptionPlaceable', ''),
@@ -46,6 +46,9 @@ def test_markers():
     ('A <b>bold</b> move<br/>', 'A bold move'),
     ('Fish &amp; chips', 'Fish  chips'),
     ('See https://example.org/x now', 'See  now'),
+    # A URL ending a sentence leaves the punctuation outside.
+    ('See https://example.org.', 'See .'),
+    ('See www.example.org.', 'See .'),
     ('Mail me@example.org', 'Mail '),
     ('Use --help', 'Use '),
     ('Page 12', 'Page '),

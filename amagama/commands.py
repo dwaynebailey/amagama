@@ -6,6 +6,7 @@
 # the AUTHORS.md file for copyright and authorship information.
 
 
+import collections
 import functools
 import datetime
 import hashlib
@@ -27,6 +28,7 @@ from translate.lang.data import langcode_ire
 from translate.lang.identify import LanguageIdentifier
 from translate.storage import factory
 
+from amagama import logsummary
 from amagama.licences import normalise_licence
 from amagama.source_options import MAX_WEIGHT
 from amagama.updater import discovery, generate, status, transifex, weblate
@@ -1041,6 +1043,38 @@ def swap_db(source_langs, rollback):
             print("Swapped in '%s'; the replaced copy is %s%s." % (slang, OLD_PREFIX, slang))
 
 
+@click.command('summarise_logs')
+@click.argument('logs', nargs=-1, required=True, type=click.Path(exists=True, dir_okay=False))
+@click.option('--output', '-o', type=click.Path(file_okay=False, writable=True),
+              help="Write each day to OUTPUT/<day>.json, replacing an earlier one. "
+                   "Without it, print a JSON line per day.")
+@click.option('--since', type=click.DateTime(formats=["%Y-%m-%d"]),
+              help="The first day to count [default: the day after the logs' first].")
+@click.option('--until', type=click.DateTime(formats=["%Y-%m-%d"]),
+              help="The last day to count [default: yesterday, UTC].")
+def summarise_logs(logs, output, since, until):
+    """Count nginx access logs (combined format, plain or gzipped) per day.
+
+    Keeps no IP addresses and no looked-up text.
+    """
+    stats = collections.Counter()
+    if output:
+        os.makedirs(output, exist_ok=True)
+    days = 0
+    for summary in logsummary.summarise(logs, since and since.date(), until and until.date(),
+                                        stats):
+        days += 1
+        if output:
+            logsummary.write_day(output, summary)
+        else:
+            print(json.dumps(summary, sort_keys=True))
+    message = "Counted %d days." % days
+    if stats["unparsed"] or stats["late"]:
+        message += " Left out %d lines that didn't parse and %d that came late." % (
+            stats["unparsed"], stats["late"])
+    print(message, file=sys.stderr)
+
+
 cli_commands = (
     initdb,
     dropdb,
@@ -1056,6 +1090,7 @@ cli_commands = (
     fetch_sources,
     update,
     swap_db,
+    summarise_logs,
     weblate_sources,
     transifex_sources,
     discover_sources,

@@ -181,6 +181,38 @@ that fails to fetch is listed there, and the unit is marked failed
 (``systemctl --failed``) though the rest was rebuilt and swapped in.
 
 
+Usage counts
+------------
+
+Two kinds of counts, neither keeping IP addresses or looked-up text.
+
+The web app counts its lookups by language pair and best match in the
+``lookup_counts`` table. The web app's database user is read-only, so let it
+add to that table once, as ``amagama`` (``ROLE`` is ``DB_USER`` in
+``local_settings.py``), then restart the web app::
+
+    sudo -u amagama env AMAGAMA_CONFIG=/srv/amagama/updater_settings.py \
+        /srv/amagama/venv/bin/amagama-manage init_lookup_counts --grant ROLE
+    sudo systemctl restart amagama.uwsgi
+    sudo -u amagama env AMAGAMA_CONFIG=/srv/amagama/updater_settings.py \
+        /srv/amagama/venv/bin/amagama-manage lookup_counts --since 2026-11-01
+
+``summarise_logs`` counts the nginx access logs per day into
+``/srv/amagama/usage/<day>.json``. The logs are root's, so it runs as root;
+like every ``amagama-manage`` command it connects to the database, here with
+the web app's settings. Over every rotated log, to fill in the past::
+
+    sudo install -d -m 755 /srv/amagama/usage
+    sudo nice env AMAGAMA_CONFIG=/srv/amagama/local_settings.py \
+        /srv/amagama/venv/bin/amagama-manage summarise_logs --output /srv/amagama/usage \
+        /srv/amagama/logs/live-nginx.access.log* /srv/amagama/logs/nginx.access.log*
+
+It reads the logs in time order with one or two open at a time, so years of
+them need little memory. Run again over the same logs, it writes the same
+files; after that, running it over each site's current log and last rotated
+one keeps the days up to yesterday.
+
+
 Upgrading
 ---------
 

@@ -162,7 +162,24 @@ languages. The following example creates the tables for English and French:
     $ amagama-manage initdb -s en -s fr
     Successfully initialized the database for 'en', 'fr'.
 
-With ``--build`` it creates the build schemas instead.
+With ``--build`` it creates the build schemas instead. It also creates the
+table of :ref:`lookup counts <managing#lookup-counts>`.
+
+
+.. _managing#init-lookup-counts:
+
+init_lookup_counts
+------------------
+
+This subcommand creates the table of :ref:`lookup counts
+<managing#lookup-counts>` in a database made before it existed. Run it as the
+database user that can write; ``--grant`` lets the web app's read-only user
+add to the counts:
+
+.. code-block:: console
+
+    $ amagama-manage init_lookup_counts --grant amagama_web
+    The lookup_counts table is ready.
 
 
 .. _managing#load-snapshot:
@@ -189,6 +206,30 @@ A snapshot made before sources had :ref:`abstracts <managing#recompute-abstracts
 or by another version of the abstraction, gets them as it loads, which takes
 longer; :ref:`recompute_abstracts <managing#recompute-abstracts>` with
 ``--snapshot`` makes them once in the snapshot itself.
+
+
+.. _managing#lookup-counts:
+
+lookup_counts
+-------------
+
+The web app counts its lookups (with :setting:`LOOKUP_COUNTS` on): per day
+(UTC), language pair and API version (``1`` for ``/tmserver`` and
+``/api/v1``, ``2`` for ``/api/v2``), the lookups, those with at least one match,
+and the band of the best match's quality. Nothing about the text looked up or
+the client is kept. This subcommand prints them as CSV, or with ``--json`` as a
+JSON object per line; ``--since`` and ``--until`` limit the days:
+
+.. code-block:: console
+
+    $ amagama-manage lookup_counts --since 2026-11-05 --until 2026-11-05
+    day,slang,tlang,api,lookups,matched,100,90-99,75-89,<75
+    2026-11-05,en,af,1,6,4,3,0,1,0
+    2026-11-05,en,af,2,1,1,0,0,0,1
+
+Each web app process adds its counts every :setting:`LOOKUP_COUNTS_INTERVAL`
+seconds, so the last of them show up that much later; a process that is
+killed rather than stopped loses the counts it hadn't added yet.
 
 
 .. _managing#migrate-db:
@@ -350,6 +391,39 @@ JSON:
     fedora-app: fetched 9.0 days ago, 100 files, 50 languages, 5000 units imported
       failed 4 runs in a row: git fetch: repository not found
     1 blocks.
+
+
+.. _managing#summarise-logs:
+
+summarise_logs
+--------------
+
+This subcommand counts nginx access logs in the "combined" format, plain or
+gzipped, per day (UTC), and keeps no IP addresses and no looked-up text. For
+each day it counts the requests by endpoint (``tmserver-unit``,
+``v1-unit``, ``v2-unit``, ``languages``, ``sources``, ``web``,
+``preflight``, ``other`` and ``invalid``), by hour, by status, and by client
+(Virtaal and Weblate by version, browsers by name, ``bot``, ``script``,
+``none`` and ``other``); the distinct clients, from their addresses hashed
+with a key made for the day and forgotten once it is counted; the lookups per
+language pair, and of those with status 200 how many replies held a match
+(``matched``) and how many were empty, judged by the reply's size; and the
+lookups' lengths, in characters. Virtaal's test instances (a User-Agent ending
+in ``Test/instance``) and its CI runs are counted only under ``excluded``.
+
+Each day goes to ``<day>.json`` in ``--output``, replacing what an earlier run
+wrote, or without it to the standard output, a JSON object per line. The logs
+can be given in any order and are read together in time order, so a day split
+over two rotated files, or logged by two sites, comes out whole. The first day
+in the logs may start part way through, so it is left out unless ``--since``
+names it; ``--until`` defaults to yesterday. A line that doesn't parse is
+counted, never shown:
+
+.. code-block:: console
+
+    $ amagama-manage summarise_logs --output /srv/amagama/usage \
+        /srv/amagama/logs/live-nginx.access.log*
+    Counted 30 days.
 
 
 .. _managing#swap-db:

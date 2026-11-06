@@ -166,6 +166,32 @@ set here to configure it.
   better cache hit rate.
 
 
+.. _settings#lookup-counts-settings:
+
+Lookup counts settings
+======================
+
+.. setting:: LOOKUP_COUNTS
+
+``LOOKUP_COUNTS``
+  Default: ``True``
+
+  Count lookups per day, language pair, API version and best match, see
+  :ref:`lookup_counts <managing#lookup-counts>`. The web app's database user
+  needs to be able to add to the ``lookup_counts`` table
+  (:ref:`init_lookup_counts <managing#init-lookup-counts>` with ``--grant``);
+  until it can, the counts are dropped with a warning in the log.
+
+
+.. setting:: LOOKUP_COUNTS_INTERVAL
+
+``LOOKUP_COUNTS_INTERVAL``
+  Default: ``60``
+
+  How often, in seconds, each web app process adds its counts to the
+  database, on a connection it opens for that.
+
+
 .. _settings#updater-settings:
 
 Updater settings

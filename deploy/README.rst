@@ -190,3 +190,17 @@ Upgrading
     sudo /srv/amagama/venv/bin/pip install -r /srv/amagama/amagama/deploy/requirements.txt
     sudo /srv/amagama/venv/bin/python -c "from phply import phpparse; phpparse.make_parser()"
     sudo systemctl restart amagama.uwsgi
+
+When the upgrade brings a new abstraction version (``ABSTRACTION_VERSION`` in
+``amagama/abstraction.py``; see ``docs/managing.rst``, recompute_abstracts),
+API v2 answers 409 until the stored abstracts are that version's, and Virtaal
+falls back to v1. Make them again after the restart, under the cache lock, in
+the ``legacy`` snapshot and the live schema (or let the next weekly update
+rebuild the live one), then restart the web app, which caches each schema's
+version::
+
+    sudo -u amagama env AMAGAMA_CONFIG=/srv/amagama/updater_settings.py \
+        flock --wait 3600 /srv/amagama/cache/.lock sh -c \
+        '/srv/amagama/venv/bin/amagama-manage recompute_abstracts -s en --snapshot legacy &&
+         /srv/amagama/venv/bin/amagama-manage recompute_abstracts -s en'
+    sudo systemctl restart amagama.uwsgi

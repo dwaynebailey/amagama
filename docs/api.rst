@@ -269,6 +269,17 @@ files`` have the same abstract, ``Delete \ue001 files``. The abstraction is
 and has a version number that changes whenever an abstract of the same text
 could change.
 
+amaGama doesn't know the format a source came from, so every text, of every
+format, is abstracted with the same placeables. So is Virtaal's query: the
+abstraction ignores the file's format and gettext flags, which Virtaal uses
+only to choose the placeables it highlights and offers to insert. Since
+version 2 the variables include ``{name}`` and ``{0:N2}`` (Python, C# and
+.NET braces), i18next's ``{{count}}`` and ``$t(key)``, a Fluent reference
+``{ $user }``, Apple's ``%@`` and ``%1$@`` and Ruby's ``%<name>s``, as well
+as printf, Python, Java and Qt placeholders. An ICU plural or select, a whole
+Fluent pattern and a shell ``$name`` stay text: in most formats they are
+ordinary text, and abstracting them everywhere would change what they mean.
+
 ``GET <SERVER>/api/v2/<SOURCE_LANGUAGE>/<TARGET_LANGUAGE>/unit/?q=<ABSTRACT>&av=<VERSION>``
 looks up an abstract the client made, where:
 
@@ -287,14 +298,14 @@ looks up an abstract the client made, where:
 ``style`` is accepted and ignored, since the abstraction removes every kind of
 accelerator. For example, with ``Delete %(count)s files``::
 
-    <SERVER>/api/v2/en/af/unit/?q=Delete%20%EE%80%81%20files&av=1
+    <SERVER>/api/v2/en/af/unit/?q=Delete%20%EE%80%81%20files&av=2
 
 The reply gives the version and the matches:
 
 .. code-block:: json
 
     {
-      "abstraction": 1,
+      "abstraction": 2,
       "matches": [
         {
           "source": "Delete {0} files",

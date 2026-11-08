@@ -236,6 +236,11 @@ again and records the version, in the live schema, the build schema
     $ amagama-manage recompute_abstracts -s en --snapshot legacy
     Recomputed _legacy_en: 81203 sources changed.
 
+When amaGama's copy of the abstraction moves to a new version (version 2 takes
+more formats' placeholders as variables), API v2 answers 409 until this is run,
+or a rebuild has made the abstracts again; restart the web app afterwards, since
+it caches each schema's version.
+
 It runs in one transaction and changes only the sources whose abstract, length
 or vector differ, so it can be run again. A rebuild with :ref:`update
 <managing#update>` makes every abstract anew, so this is needed only for a

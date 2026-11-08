@@ -134,6 +134,24 @@ class TestRecompute(object):
         result = run('recompute_abstracts', '-s', 'en')
         assert "Recomputed en: 0 sources changed." in result.output
 
+    def test_recompute_to_version_2(self, load, pg_connection):  # noqa: F811 - fixture
+        """Version 1 left {{count}} and %1$@ as text; recomputing gives
+        version 2's abstracts and records version 2."""
+        run('initdb', '-s', 'en')
+        load('gnome-51', 'af', [('{{count}} files', '{{count}} lêers'),
+                                ('Open %1$@', 'Maak %1$@ oop')])
+        with pg_connection.cursor() as cursor:
+            cursor.execute("""UPDATE en.sources SET abstract = NULL, length = length(text),
+                    vector = TO_TSVECTOR('english', text);
+                UPDATE en.abstraction SET version = 1""")
+        pg_connection.commit()
+        result = run('recompute_abstracts', '-s', 'en')
+        assert "Recomputed en: 2 sources changed." in result.output
+        rows = {text: row for text, *row in sources(pg_connection)}
+        assert rows['{{count}} files'][:2] == ['\ue001 files', 7]
+        assert rows['Open %1$@'][:2] == ['Open \ue001', 6]
+        assert query(pg_connection, "SELECT version FROM en.abstraction") == [(2,)]
+
     def test_recompute_deployed(self, stored, pg_connection):
         expected = sources(pg_connection)
         run('deploy_db', input='y\n')

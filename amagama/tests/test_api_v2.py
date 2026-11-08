@@ -74,6 +74,33 @@ def test_other_version(stored, av):
     assert response.get_json() == {'abstraction': ABSTRACTION_VERSION}
 
 
+def test_version_one(stored):
+    """A client with version 1's abstracts is refused, so it uses v1."""
+    assert ABSTRACTION_VERSION == 2
+    with client() as c:
+        response = v2(c, 'Save file', av=1)
+    assert response.status_code == 409
+    assert response.get_json() == {'abstraction': 2}
+
+
+@pytest.mark.parametrize('query, source, target', [
+    ('{{n}} files', '{{count}} files', '{{count}} lêers'),
+    ('Hello { $name }', 'Hello { $user }', 'Hallo { $user }'),
+    ('Open %2$@', 'Open %1$@', 'Maak %1$@ oop'),
+    ('Value {1:N2}', 'Value {0:N2}', 'Waarde {0:N2}'),
+])
+def test_format_placeholders(load, query, source, target):  # noqa: F811 - fixture
+    """Stored sources of any format are abstracted with every parser, as
+    Virtaal abstracts its query."""
+    run('initdb', '-s', 'en')
+    load('gnome-51', 'af', [(source, target), ('Save file', 'Stoor lêer')])
+    with client() as c:
+        response = v2(c, query)
+    assert response.status_code == 200
+    assert response.get_json()['matches'] == [{
+        'source': source, 'target': target, 'quality': 100, 'sources': ['gnome-51']}]
+
+
 def test_schema_without_abstracts(stored, pg_connection):
     with pg_connection.cursor() as cursor:
         cursor.execute("DROP TABLE en.abstraction")

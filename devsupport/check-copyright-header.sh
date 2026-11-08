@@ -2,7 +2,8 @@
 # Pre-commit hook: every Python file and bin/ script carries the header
 # in .license.header.txt, with a shebang above it only on the scripts in
 # bin/. docs/conf.py is left out: its own descriptive comment starts the
-# file. So is amagama/abstraction.py, vendored from Virtaal with its own.
+# file. So are amagama/abstraction.py and amagama/formatplaceables.py,
+# vendored from Virtaal with its own.
 set -eu
 
 HEADER='#
@@ -16,7 +17,7 @@ failed=()
 for f in "$@"; do
     [ -f "$f" ] || continue
     case "$f" in
-        docs/conf.py|amagama/abstraction.py) continue ;;
+        docs/conf.py|amagama/abstraction.py|amagama/formatplaceables.py) continue ;;
     esac
     first=1
     if head -1 "$f" | grep -q '^#!'; then

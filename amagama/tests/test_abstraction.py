@@ -19,11 +19,17 @@ from amagama.abstraction import abstract
 
 
 def test_version():
-    assert abstraction.ABSTRACTION_VERSION == 1
+    assert abstraction.ABSTRACTION_VERSION == 2
 
 
 def test_markers():
     assert [(cls.__name__, marker) for cls, marker in abstraction._CLASSES] == [
+        ('I18NextPlaceable', '\ue001'),
+        ('FluentReferencePlaceable', '\ue001'),
+        ('RubyPlaceable', '\ue001'),
+        ('ApplePlaceable', '\ue001'),
+        ('DotNetPlaceable', '\ue001'),
+        ('BracePlaceable', '\ue001'),
         ('XMLTagPlaceable', None),
         ('XMLEntityPlaceable', ''),
         ('PythonFormattingPlaceable', ''),
@@ -60,6 +66,33 @@ def test_markers():
     ('Wait...', 'Wait…'),
     # A string with a character from the marker block stays raw.
     ('Icon  %s', 'Icon  %s'),
+    # Version 2: other formats' placeholders, in any text.
+    ('{{count}} files', '\ue001 files'),
+    ('Hello { $user }', 'Hello \ue001'),
+    ('Open %1$@', 'Open \ue001'),
+    ('Value {0:N2}', 'Value \ue001'),
+    ('Save as {name}', 'Save as \ue001'),
+    ('$t(common.save) now', '\ue001 now'),
+    # Not the parsers Virtaal gives only some formats or flags: ICU's
+    # plural and a shell variable stay text, as in Virtaal's abstract.
+    ('{n, plural, one {# file} other {# files}}', '{n, plural, one {# file} other {# files}}'),
+    ('Use $HOME now', 'Use $HOME now'),
 ])
 def test_abstract(text, abstracted):
     assert abstract(text)[0] == abstracted
+
+
+@pytest.mark.parametrize('query, source, target, expected', [
+    ('{{n}} files', '{{count}} files', '{{count}} lêers', '{{n}} lêers'),
+    ('Hello { $name }', 'Hello { $user }', 'Hallo { $user }', 'Hallo { $name }'),
+    ('Open %2$@', 'Open %1$@', 'Maak %1$@ oop', 'Maak %2$@ oop'),
+    ('Value {1:N2}', 'Value {0:N2}', 'Waarde {0:N2}', 'Waarde {1:N2}'),
+    ('Save as %s', 'Save as {name}', 'Stoor as {name}', 'Stoor as %s'),
+])
+def test_format_placeholder_round_trip(query, source, target, expected):
+    """A match differing only in a placeholder has the query's abstract and
+    takes the query's placeholder."""
+    assert abstract(query)[0] == abstract(source)[0]
+    adapted = abstraction.adapt(query, source, target, 70)
+    assert adapted.target == expected
+    assert adapted.rebuilt.unresolved == 0

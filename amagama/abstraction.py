@@ -7,9 +7,9 @@
 #
 # Vendored from Virtaal (virtaal/support/abstraction.py,
 # https://github.com/translate/virtaal). Change it there first, then copy
-# its code here unchanged: Virtaal sends its ABSTRACTION_VERSION with each
-# /api/v2 lookup, and a stored abstract only matches one made by the same
-# version.
+# its code here unchanged but for the import of formatplaceables: Virtaal
+# sends its ABSTRACTION_VERSION with each /api/v2 lookup, and a stored
+# abstract only matches one made by the same version.
 
 """The abstract form of a string: each placeable replaced by one marker
 character for its class, and an accelerator removed, so that strings
@@ -31,7 +31,9 @@ from typing import NamedTuple
 from translate.search.lshtein import LevenshteinComparer
 from translate.storage.placeables import StringElem, general, parse
 
-ABSTRACTION_VERSION = 1
+from amagama import formatplaceables as fp
+
+ABSTRACTION_VERSION = 2
 """Changes whenever an abstract of the same text could change: the parser
 list, the parser fixes, the accelerator rule or the ellipsis rule."""
 
@@ -67,8 +69,16 @@ class _UrlPlaceable(general.UrlPlaceable):
 
 
 # Fixed, and not the user's placeable settings, so stored abstracts don't
-# drift between users and sessions. In translate-toolkit's parser order.
+# drift between users and sessions. Any file's: {name} adapts like %s
+# wherever it is. Virtaal's first, in their order, then
+# translate-toolkit's in its order.
 _CLASSES = (
+    (fp.I18NextPlaceable, VARIABLE),
+    (fp.FluentReferencePlaceable, VARIABLE),
+    (fp.RubyPlaceable, VARIABLE),
+    (fp.ApplePlaceable, VARIABLE),
+    (fp.DotNetPlaceable, VARIABLE),
+    (fp.BracePlaceable, VARIABLE),
     (general.XMLTagPlaceable, None),
     (general.XMLEntityPlaceable, ENTITY),
     (general.PythonFormattingPlaceable, VARIABLE),
@@ -190,7 +200,6 @@ def _analyse(text):
         return _Analysis(((None, text),), (), None, raw=True)
     pieces = []
     placeables = []
-    accels = []
     open_tags = {}
     offset = 0
     for marker, raw, name in _pieces(text):
@@ -211,6 +220,12 @@ def _analyse(text):
             placeables.append(Placeable(marker, raw, offset, end, pair))
             pieces.append((marker, raw))
         offset = end
+    return _Analysis(tuple(pieces), tuple(placeables), _find_accelerator(text, pieces))
+
+
+def _find_accelerator(text, pieces):
+    """(offset, marker character) of the one accelerator in the text
+    pieces of text, or None for none or several."""
     text_at = set()
     offset = 0
     for marker, raw in pieces:
@@ -218,11 +233,11 @@ def _analyse(text):
             text_at.update(range(offset, offset + len(raw)))
         offset += len(raw)
     # Over the whole text: "_1" is an accelerator though "1" is a number.
+    accels = []
     for found in _ACCEL_RE.finditer(text):
         if found.group(1) and found.start(1) in text_at:
             accels.append((found.start(1), found.group(1)))
-    accelerator = accels[0] if len(accels) == 1 else None
-    return _Analysis(tuple(pieces), tuple(placeables), accelerator)
+    return accels[0] if len(accels) == 1 else None
 
 
 def placeables(text):
@@ -325,6 +340,22 @@ def rebuild(target, source_placeables, query_placeables, query_accelerator=None,
             rebuilt += 1
         out.append(current.raw)
     return Rebuilt(''.join(out), rebuilt, unresolved, new_marker is not None)
+
+
+def transfer(text, from_source, to_source):
+    """text, which goes with from_source, given to_source's placeables in
+    place of from_source's ("Maak %s oop" from "Open %s" to "Open %d" is
+    "Maak %d oop"). None unless that changes text and maps cleanly: both
+    sources have as many placeables of each class, and each of text's
+    has its counterpart."""
+    from_placeables = placeables(from_source)
+    to_placeables = placeables(to_source)
+    if Counter(p.marker for p in from_placeables) != Counter(p.marker for p in to_placeables):
+        return None
+    result = rebuild(text, from_placeables, to_placeables)
+    if result.unresolved or not result.rebuilt:
+        return None
+    return result.text
 
 
 _comparer = LevenshteinComparer(max_len=1000)

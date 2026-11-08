@@ -25,8 +25,8 @@ def test_version():
 def test_markers():
     assert [(cls.__name__, marker) for cls, marker in abstraction._CLASSES] == [
         ('I18NextPlaceable', '\ue001'),
-        ('FluentReferencePlaceable', '\ue001'),
         ('RubyPlaceable', '\ue001'),
+        ('FluentReferencePlaceable', '\ue001'),
         ('ApplePlaceable', '\ue001'),
         ('DotNetPlaceable', '\ue001'),
         ('BracePlaceable', '\ue001'),
@@ -72,6 +72,7 @@ def test_markers():
     ('Open %1$@', 'Open \ue001'),
     ('Value {0:N2}', 'Value \ue001'),
     ('Save as {name}', 'Save as \ue001'),
+    ('Hi %{name}', 'Hi \ue001'),
     ('$t(common.save) now', '\ue001 now'),
     # Not the parsers Virtaal gives only some formats or flags: ICU's
     # plural and a shell variable stay text, as in Virtaal's abstract.
@@ -88,6 +89,7 @@ def test_abstract(text, abstracted):
     ('Open %2$@', 'Open %1$@', 'Maak %1$@ oop', 'Maak %2$@ oop'),
     ('Value {1:N2}', 'Value {0:N2}', 'Waarde {0:N2}', 'Waarde {1:N2}'),
     ('Save as %s', 'Save as {name}', 'Stoor as {name}', 'Stoor as %s'),
+    ('Hi %s', 'Hi %{name}', 'Hallo %{name}', 'Hallo %s'),
 ])
 def test_format_placeholder_round_trip(query, source, target, expected):
     """A match differing only in a placeholder has the query's abstract and

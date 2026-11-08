@@ -275,8 +275,8 @@ abstraction ignores the file's format and gettext flags, which Virtaal uses
 only to choose the placeables it highlights and offers to insert. Since
 version 2 the variables include ``{name}`` and ``{0:N2}`` (Python, C# and
 .NET braces), i18next's ``{{count}}`` and ``$t(key)``, a Fluent reference
-``{ $user }``, Apple's ``%@`` and ``%1$@`` and Ruby's ``%<name>s``, as well
-as printf, Python, Java and Qt placeholders. An ICU plural or select, a whole
+``{ $user }``, Apple's ``%@`` and ``%1$@`` and Ruby's ``%{name}`` and
+``%<name>s``, as well as printf, Python, Java and Qt placeholders. An ICU plural or select, a whole
 Fluent pattern and a shell ``$name`` stay text: in most formats they are
 ordinary text, and abstracting them everywhere would change what they mean.
 

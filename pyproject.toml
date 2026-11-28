@@ -86,6 +86,10 @@ line-length = 110
 [tool.ruff.lint]
 select = ["E", "F", "W"]
 
+[tool.ruff.lint.per-file-ignores]
+# Other projects' code, kept as it is there.
+"amagama/vendored/*" = ["E501"]
+
 [tool.codespell]
 # A name in AUTHORS.md (Alaa Abd el Fattah).
 ignore-words-list = "abd"

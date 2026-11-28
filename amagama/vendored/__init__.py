@@ -10,5 +10,6 @@
 abstraction, formatplaceables and textfold are Virtaal's (GPL-2.0-or-later),
 for matching on the same abstract of a string that Virtaal looks up by
 (#3603): copy them again together when Virtaal's ABSTRACTION_VERSION
-changes. Only their imports of each other are changed.
+changes. concordance is Virtaal's too, for finding a phrase as Virtaal's
+own TM finds it (#3227). Only their imports of each other are changed.
 """

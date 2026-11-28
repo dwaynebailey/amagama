@@ -327,6 +327,77 @@ those by their text. The options and the reply are those of :ref:`API v1
 not abstracts.
 
 
+.. _api#concordance:
+
+Concordance search
+==================
+
+A concordance search lists the translations whose English holds a phrase,
+found as Virtaal finds it in its own translation memory: past placeables and
+accelerators, so ``Open File`` finds ``Open &File...`` and ``Open %d file``
+finds ``Open %s file``:
+
+``GET <SERVER>/api/v1/<SOURCE_LANGUAGE>/<TARGET_LANGUAGE>/concordance?q=<PHRASE>``
+
+with these options:
+
+``side``
+  ``source`` (the default) searches the English. ``both`` searches the
+  English too, and its reply is never complete; ``target`` is a 400, as
+  translations have no index to search by yet.
+
+``case``
+  ``1`` for the phrase's own case only.
+
+``whole``
+  ``1`` for whole words only; otherwise the phrase may be part of a word.
+
+``limit``
+  The most matches listed, at most 200 (the default).
+
+Up to 1,000 translations are read, those with the shortest English first. A
+search that reads them for longer than the server allows
+(``CONCORDANCE_TIMEOUT``, 5 seconds) lists none. The reply has ``matches``,
+best first: whole words before part of a word, the phrase's own case before
+another, then shorter English. ``total`` counts the translations read that
+matched, and ``complete`` is false when more may match than were read. Each
+match has ``source``, ``target``, the blocks it was imported from
+(``sources``) and the :ref:`checks <api#tm-suggestion-results>` it is flagged
+with, as a suggestion has, and:
+
+``hits``
+  ``source``: the ``[start, end]`` of each place the phrase is in the
+  English, in characters.
+
+``whole``
+  Whether a hit is whole words.
+
+``exact``
+  Whether a hit has the phrase's own case.
+
+A phrase shorter than two characters finds nothing. For example::
+
+    https://amagama-live.translatehouse.org/api/v1/en/af/concordance?q=open%20file&whole=1
+
+.. code-block:: json
+
+    {
+      "complete": true,
+      "matches": [
+        {
+          "checks": [],
+          "exact": false,
+          "hits": {"source": [[0, 9]]},
+          "source": "Open file",
+          "sources": ["gnome-51"],
+          "target": "Maak lêer oop",
+          "whole": true
+        }
+      ],
+      "total": 1
+    }
+
+
 .. _api#languages:
 
 Available languages

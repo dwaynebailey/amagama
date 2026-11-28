@@ -76,6 +76,10 @@ MAX_LENGTH = 2000
 MIN_SIMILARITY = 70
 MAX_CANDIDATES = 5
 
+# How long, in milliseconds, a concordance search may read sources for; past
+# it, the reply has no matches and isn't complete.
+CONCORDANCE_TIMEOUT = 5000
+
 
 # ISO 639-3's retired codes, downloaded from iso639-3.sil.org by fetch_sources
 # and update, and read by both and the web app (None: in UPDATER_CACHE_DIR).

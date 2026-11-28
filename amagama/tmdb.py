@@ -38,6 +38,7 @@ from amagama.mojibake import CANDIDATE_REGEX, unmangle
 from amagama.source_options import SourceOptions
 from amagama import pruning
 from amagama.vendored import abstraction
+from amagama.vendored import concordance as phrases
 from amagama.normalise import indexing_version
 from amagama.updater.languages import COUNTRY_CODES, normalise_language, not_language
 
@@ -1675,6 +1676,89 @@ ORDER BY rank DESC{order};
         licences = self.block_licences(slang) if source_options.licences else None
         return source_options.choose(results, max_candidates, self.block_weights(slang), licences)
 
+    def concordance(self, text, source_lang, target_lang, side="source", case=False,
+                    whole_words=False, limit=phrases.LIMIT):
+        """The translations whose English holds the phrase text, found past
+        placeables and accelerators as Virtaal's own TM finds it, best first.
+
+        Only the English is searched: side "both" finds what "source" does
+        but isn't complete, and "target" is a 400 (translations have no index
+        to search by, #3227).
+
+        @return: {"matches": up to limit matches, "total": how many of the
+            translations read matched, "complete": False if more may match}"""
+        slang = lang_to_table(source_lang)
+        if slang not in self.source_langs:
+            abort(404)
+        tlang = lang_to_table(target_lang)
+        if slang == tlang or side not in ("source", "both") or "\x00" in text:
+            abort(400)
+        query = phrases.Query(text, case, whole_words,
+                              {"source": source_lang, "target": target_lang})
+        complete = side == "source"
+        if len(query.text.strip()) < phrases.MIN_LENGTH:
+            return {"matches": [], "total": 0, "complete": complete}
+        cursor = self.get_cursor(self.schema(slang))
+        rows = self._concordance_candidates(cursor, slang, tlang, query)
+        if rows is None or len(rows) >= CONCORDANCE_CANDIDATES:
+            complete = False
+        matches = []
+        for sid, source, target in rows or ():
+            found = phrases.match_hits(query, ("source",), {"source": [source]})
+            if found:
+                matches.append(phrases.describe(
+                    {"sid": sid, "source": source, "target": target}, found))
+        listed = phrases.rank(matches)[:limit]
+        self._add_sources(cursor, tlang, listed, self.check_names(slang))
+        return {"matches": listed, "total": len(matches), "complete": complete}
+
+    def _concordance_candidates(self, cursor, slang, tlang, query):
+        """(sid, source, target) of up to CONCORDANCE_CANDIDATES translations
+        into tlang whose English may hold query's phrase, shortest first; None
+        if reading them took longer than CONCORDANCE_TIMEOUT.
+
+        Whole words are found by the full-text indexes, a band at a time with
+        each band's own condition, so its index is used. Part of a word, or a
+        phrase of stop words alone, is found by reading every source: with
+        its accelerator markers taken out, a placeable anywhere."""
+        config = lang_to_config(slang)
+        words = None
+        if query.whole_words:
+            cursor.execute("SELECT NUMNODE(PHRASETO_TSQUERY(%s, %s))", (config, query.abstract))
+            words = cursor.fetchone()[0] > 0
+        params = {"config": config, "abstract": query.abstract, "loose": query.loose_like(),
+                  "tlang": tlang, "candidates": CONCORDANCE_CANDIDATES}
+        holds = "%s %s %%(loose)s" % (_STRIP_ACCELERATORS, "LIKE" if query.case else "ILIKE")
+        if words:
+            arms = []
+            bands = source_bands(current_app.config.get("MIN_SIMILARITY"),
+                                 current_app.config.get("MAX_LENGTH"))
+            for n, (lowest, highest) in enumerate(bands):
+                condition = " AND ".join(
+                    ["s.length >= %%(low%d)s" % n] * (lowest is not None) +
+                    ["s.length <= %%(high%d)s" % n] * (highest is not None))
+                params.update({"low%d" % n: lowest, "high%d" % n: highest})
+                arms.append("""SELECT s.sid, s.text, s.length FROM sources s
+                    WHERE s.vector @@ PHRASETO_TSQUERY(%%(config)s, %%(abstract)s) AND %s
+                    AND %s""" % (condition, holds))
+            found = " UNION ".join(arms)
+        else:
+            found = "SELECT s.sid, s.text, s.length FROM sources s WHERE %s" % holds
+        cursor.execute("SAVEPOINT concordance")
+        cursor.execute("SET LOCAL statement_timeout = %s",
+                       (current_app.config.get("CONCORDANCE_TIMEOUT", 5000),))
+        try:
+            cursor.execute("""WITH found AS (%s)
+                SELECT f.sid, f.text, t.text FROM found f
+                JOIN targets t ON t.sid = f.sid AND t.lang = %%(tlang)s
+                ORDER BY f.length, f.sid, t.text LIMIT %%(candidates)s""" % found, params)
+            rows = [tuple(row) for row in cursor.fetchall()]
+        except errors.QueryCanceled:
+            cursor.execute("ROLLBACK TO SAVEPOINT concordance")
+            rows = None
+        cursor.execute("RELEASE SAVEPOINT concordance")
+        return rows
+
     def _add_sources(self, cursor, tlang, results, check_names=None):
         """Give each result the names of the blocks it was imported from, and
         of the check_names ({bit: name}) it is flagged with."""
@@ -1707,6 +1791,12 @@ def indexed(text):
         return text, len(text)
     return found, len(found)
 
+
+# The most translations a concordance search reads, shortest English first,
+# as Virtaal's own TM does.
+CONCORDANCE_CANDIDATES = 1000
+# A source with its accelerator markers taken out, for a concordance search.
+_STRIP_ACCELERATORS = "REPLACE(REPLACE(REPLACE(s.text, '&', ''), '_', ''), '~', '')"
 
 # The longest queries of the shorter bands of sources, each band with its
 # own full-text index (source_bands()).

@@ -19,6 +19,7 @@ from amagama import stats, titles
 from amagama.source_options import SourceOptions
 from amagama.tmdb import lang_to_table
 from amagama.vendored import abstraction
+from amagama.vendored import concordance as phrases
 
 
 # Let's encourage caching for an hour. A reply keeps the Headers it is
@@ -111,6 +112,19 @@ def translate_abstract(slang, tlang):
                          'version': abstraction.ABSTRACTION_VERSION}),
             status=409, mimetype='application/json')
     return _suggestions(slang, tlang, query, abstracted=True)
+
+
+@read_api.route('/<slang>/<tlang>/concordance', methods=('GET', ))
+def concordance_search(slang, tlang):
+    """Return the translations whose English holds the phrase q, as
+    Virtaal's TM client asks: side, case=1, whole=1 and limit."""
+    limit = get_int_arg(request, 'limit')
+    found = current_app.tmdb.concordance(
+        request.args.get('q', ''), slang, tlang, side=request.args.get('side', 'source'),
+        case=request.args.get('case') == '1', whole_words=request.args.get('whole') == '1',
+        limit=max(1, min(limit or phrases.LIMIT, phrases.LIMIT)))
+    return current_app.response_class(jsonwrapper(found), mimetype='application/json',
+                                      headers=Headers(cache_headers))
 
 
 @read_api.route('/<slang>/<tlang>/unit/<source:uid>', methods=('GET', ),

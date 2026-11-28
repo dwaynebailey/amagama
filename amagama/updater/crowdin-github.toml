@@ -4352,6 +4352,8 @@ url = "https://github.com/SIsilicon/WorldEdit-BE"
 files = ["texts/{lang}.po"]
 exclude = ["texts/en_US.po"]
 sparse = ["texts/*.po"]
+format = "po-mono"
+template = "texts/en_US.po"
 licence = "GPL-3.0-only"
 
 [[block]]

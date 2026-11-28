@@ -599,3 +599,29 @@ def test_fluent_junk_still_refused(tmp_path):
     path.write_text("save = Speichern\nsave = Sichern\n= broken\n", encoding="utf-8")
     with pytest.raises(ValueError, match="Parsing error"):
         open_store(str(path), "fluent")
+
+
+def keyed_po(*pairs):
+    return ('msgid ""\nmsgstr ""\n"Content-Type: text/plain; charset=UTF-8\\n"\n' +
+            "".join('\nmsgid "%s"\nmsgstr "%s"\n' % pair for pair in pairs)).encode("utf-8")
+
+
+KEYS = ["worldedit.selection.cuboid.primary", "commands.wedit:blocks.changed",
+        "settings_title", "menu-file-open", "app.name"]
+
+
+@pytest.mark.parametrize("ids, expected", [
+    (KEYS, True),
+    # One English message in five is still keyed.
+    (KEYS[:4] + ["Open the file"], True),
+    (KEYS[:3] + ["Open the file", "Save"], False),
+    # Ordinary PO: words, hyphenated words and file names among them.
+    (["Open", "Save", "E-mail", "Wi-Fi", "Built-in", "README.md"], False),
+    (["File", "Edit", "View", "Help", "Quit"], False),
+    # Too few to tell.
+    (KEYS[:4], False),
+])
+def test_keyed(ids, expected):
+    """A PO file whose msgids are keys rather than English (#3889)."""
+    store = formats._read_po("x.po", keyed_po(*[(i, "x") for i in ids]))
+    assert formats.keyed(store) is expected

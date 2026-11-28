@@ -264,6 +264,27 @@ def _read_po(path, data):
     return store
 
 
+# A message id that is a key, not English: words joined by dots, colons,
+# underscores or hyphens, with no spaces (worldedit.selection.cuboid.primary).
+_KEY = re.compile(r"[A-Za-z][A-Za-z0-9]*(?:[._:-][A-Za-z0-9]+)+")
+# A PO file is keyed by id when this share of its messages (and at least
+# KEYED_LEAST of them) have keys for msgids.
+KEYED_SHARE = 0.8
+KEYED_LEAST = 5
+
+
+def _messages(store):
+    return [unit for unit in store.units if not unit.isheader() and unit.source]
+
+
+def keyed(store):
+    """Whether a PO store's msgids are keys rather than English: PO keyed by
+    id (po-mono), read as ordinary PO."""
+    ids = [str(unit.source) for unit in _messages(store)]
+    return len(ids) >= KEYED_LEAST and \
+        sum(1 for found in ids if _KEY.fullmatch(found)) >= KEYED_SHARE * len(ids)
+
+
 @functools.cache
 def _php_parser(make_parser):
     parser = make_parser()

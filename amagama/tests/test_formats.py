@@ -625,3 +625,17 @@ def test_keyed(ids, expected):
     """A PO file whose msgids are keys rather than English (#3889)."""
     store = formats._read_po("x.po", keyed_po(*[(i, "x") for i in ids]))
     assert formats.keyed(store) is expected
+
+
+def test_keyed_template():
+    """The English of PO keyed by id is in its msgstrs."""
+    english = keyed_po(*[(key, "Text %d" % n) for n, key in enumerate(KEYS)])
+    assert formats.keyed_template("en.po", english)
+    # Most of its msgstrs (80%) hold the English.
+    some = [(key, "Text" if n < 4 else "") for n, key in enumerate(KEYS)]
+    assert formats.keyed_template("en.po", keyed_po(*some))
+    some = [(key, "Text" if n < 3 else "") for n, key in enumerate(KEYS)]
+    assert not formats.keyed_template("en.po", keyed_po(*some))
+    # A keyed POT has no English to pair with.
+    assert not formats.keyed_template("en.po", keyed_po(*[(key, "") for key in KEYS]))
+    assert not formats.keyed_template("en.po", keyed_po(*[("Open %d" % n, "") for n in range(6)]))

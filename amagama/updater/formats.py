@@ -285,6 +285,14 @@ def keyed(store):
         sum(1 for found in ids if _KEY.fullmatch(found)) >= KEYED_SHARE * len(ids)
 
 
+def keyed_template(path, data):
+    """Whether PO data is the English of PO keyed by id: keys for msgids
+    (keyed()) and the English in most msgstrs."""
+    store = _read_po(path, data)
+    messages = _messages(store)
+    return keyed(store) and sum(1 for unit in messages if unit.target) >= KEYED_SHARE * len(messages)
+
+
 @functools.cache
 def _php_parser(make_parser):
     parser = make_parser()

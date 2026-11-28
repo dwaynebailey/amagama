@@ -1043,24 +1043,16 @@ ORDER BY rank DESC{order};
         # read (#3476). Not the shortest band's: its lengths are so common
         # that reading them costs more than it saves.
         banded = "length, vector" if self._btree_gin(cursor) else "vector"
-        lower_bound = 0
-        for upper_bound in (28, 93):
-            idx_name = sql.Identifier("sources_up_to_%d_text_idx" % upper_bound)
-            if lower_bound == 0:
-                cursor.execute(sql.SQL("""
-                    CREATE INDEX {} ON sources USING gin(vector)
-                    WHERE length <= %s""").format(idx_name),
-                    (max_levenshtein_length(upper_bound, similarity, max_length),))
-            else:
-                cursor.execute(sql.SQL("""
-                    CREATE INDEX {} ON sources USING gin(%s)
-                    WHERE length BETWEEN %%s AND %%s""" % banded).format(idx_name),
-                    (min_levenshtein_length(lower_bound, similarity),
-                     max_levenshtein_length(upper_bound, similarity, max_length)))
-            lower_bound = upper_bound + 1
+        (_, shortest), middle, (longest, _) = source_bands(similarity, max_length)
+        cursor.execute("""
+            CREATE INDEX sources_up_to_28_text_idx ON sources USING gin(vector)
+            WHERE length <= %s""", (shortest,))
+        cursor.execute("""
+            CREATE INDEX sources_up_to_93_text_idx ON sources USING gin(%s)
+            WHERE length BETWEEN %%s AND %%s""" % banded, middle)
         cursor.execute("""
             CREATE INDEX sources_long_idx ON sources USING gin(%s)
-            WHERE length >= %%s""" % banded, (min_levenshtein_length(lower_bound, similarity),))
+            WHERE length >= %%s""" % banded, (longest,))
         # How many sources have each word, for lookups to match fewer of a
         # query's words (amagama.pruning); a word in fewer is rare.
         cursor.execute("""
@@ -1714,6 +1706,23 @@ def indexed(text):
     if not re.search(r"\w", found):
         return text, len(text)
     return found, len(found)
+
+
+# The longest queries of the shorter bands of sources, each band with its
+# own full-text index (source_bands()).
+BAND_QUERIES = (28, 93)
+
+
+def source_bands(min_similarity, max_length):
+    """(lowest, highest) length of each band of sources with its own
+    full-text index, None where it's open: the sources a lookup of up to 28
+    characters reads, of 29 to 93, and of 94 or more. A lookup's lengths
+    are always within one band."""
+    shortest, longest = BAND_QUERIES
+    return [(None, max_levenshtein_length(shortest, min_similarity, max_length)),
+            (min_levenshtein_length(shortest + 1, min_similarity),
+             max_levenshtein_length(longest, min_similarity, max_length)),
+            (min_levenshtein_length(longest + 1, min_similarity), None)]
 
 
 def min_levenshtein_length(length, min_similarity):
